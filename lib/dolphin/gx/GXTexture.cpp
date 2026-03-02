@@ -5,6 +5,10 @@
 
 #include <absl/container/flat_hash_map.h>
 
+#if !NDEBUG
+static volatile u8 forcePointerLoad;
+#endif
+
 extern "C" {
 void GXInitTexObj(GXTexObj* obj_, const void* data, u16 width, u16 height, GXTexFmt format, GXTexWrapMode wrapS,
                   GXTexWrapMode wrapT, GXBool mipmap) {
@@ -34,6 +38,11 @@ void GXInitTexObj(GXTexObj* obj_, const void* data, u16 width, u16 height, GXTex
   } else {
     obj->dataInvalidated = true;
   }
+
+#if !NDEBUG
+  // Force load of pointer to ensure it's valid.
+  forcePointerLoad = *(u8*)data;
+#endif
 }
 
 void GXInitTexObjCI(GXTexObj* obj_, const void* data, u16 width, u16 height, GXCITexFmt format, GXTexWrapMode wrapS,
@@ -64,6 +73,11 @@ void GXInitTexObjCI(GXTexObj* obj_, const void* data, u16 width, u16 height, GXC
   } else {
     obj->dataInvalidated = true;
   }
+
+#if !NDEBUG
+  // Force load of pointer to ensure it's valid.
+  forcePointerLoad = *(u8*)data;
+#endif
 }
 
 void GXInitTexObjLOD(GXTexObj* obj_, GXTexFilter minFilt, GXTexFilter magFilt, float minLod, float maxLod,

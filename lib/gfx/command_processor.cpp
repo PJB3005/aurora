@@ -79,6 +79,12 @@ static u32 prepare_vtx_buffer(ByteBuffer* outBuf, GXVtxFmt vtxfmt, const u8* ptr
         vtxSize += 4;
         outVtxSize += 12;
         break;
+    case COMBINE(GX_VA_POS, GX_POS_XY, GX_U8):
+        attrArrays[attr].count = 2;
+        attrArrays[attr].type = GX_U8;
+        vtxSize += 2;
+        outVtxSize += 12;
+        break;
       case COMBINE(GX_VA_TEX0, GX_TEX_ST, GX_F32):
       case COMBINE(GX_VA_TEX1, GX_TEX_ST, GX_F32):
       case COMBINE(GX_VA_TEX2, GX_TEX_ST, GX_F32):
@@ -138,6 +144,13 @@ static u32 prepare_vtx_buffer(ByteBuffer* outBuf, GXVtxFmt vtxfmt, const u8* ptr
         vtxSize += 4;
         outVtxSize += 16;
         break;
+      case COMBINE(GX_VA_CLR0, GX_CLR_RGB, GX_RGB565):
+      case COMBINE(GX_VA_CLR1, GX_CLR_RGB, GX_RGB565):
+        attrArrays[attr].count = 3;
+        attrArrays[attr].type = GX_RGB565;
+        vtxSize += 2;
+        outVtxSize += 12;
+        break;
       }
 #undef COMBINE
       break;
@@ -184,7 +197,18 @@ static u32 prepare_vtx_buffer(ByteBuffer* outBuf, GXVtxFmt vtxfmt, const u8* ptr
       const auto& attrFmt = g_gxState.vtxFmts[vtxfmt].attrs[attr];
       u8 count = attrArrays[attr].count;
       switch (attrArrays[attr].type) {
-      case GX_U8:
+      case GX_U8: {
+        if (attr == GX_VA_CLR0 || attr == GX_VA_CLR1) {
+          // TODO: GX_RGB565 format.
+          out[0] = 0;
+          out[1] = 0;
+          out[2] = 0;
+          buf.append(out.data(), sizeof(f32) * 3);
+          ptr += 2;
+          break;
+        }
+
+        // GX_U8 format.
         for (int i = 0; i < count; ++i) {
           const auto value = reinterpret_cast<const u8*>(ptr)[i];
           out[i] = static_cast<f32>(value) / static_cast<f32>(1 << attrFmt.frac);
@@ -192,6 +216,7 @@ static u32 prepare_vtx_buffer(ByteBuffer* outBuf, GXVtxFmt vtxfmt, const u8* ptr
         buf.append(out.data(), sizeof(f32) * count);
         ptr += count;
         break;
+      }
       case GX_S8:
         for (int i = 0; i < count; ++i) {
           const auto value = reinterpret_cast<const s8*>(ptr)[i];

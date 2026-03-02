@@ -330,6 +330,9 @@ static inline std::string vtx_attr(const ShaderConfig& config, GXAttr attr) {
     if (attr == GX_VA_CLR0 || attr == GX_VA_CLR1) {
       return "vec4f(0.0, 0.0, 0.0, 0.0)"s;
     }
+    if (attr >= GX_VA_TEX0 && attr <= GX_VA_TEX7) {
+      return "vec2f(0.5, 0.5)"s;
+    }
     UNLIKELY FATAL("unmapped vtx attr {}", underlying(attr));
   }
   if (attr == GX_VA_POS) {
@@ -1205,6 +1208,11 @@ fn fetch_u8_2(p: ptr<storage, array<u32>>, idx: u32, frac: u32, le: bool) -> vec
   return vec2f(v) / f32(1u << frac);
 }}
 
+fn fetch_s8_2(p: ptr<storage, array<u32>>, idx: u32, le: bool) -> vec2f {{
+  var v = (bitcast<vec2i>(raw_fetch_u8_2(p, idx)) << vec2u(24)) >> vec2u(24);
+  return vec2f(v) / f32(1u << 8);
+}}
+
 fn fetch_i8_2(p: ptr<storage, array<u32>>, idx: u32, frac: u32, le: bool) -> vec2f {{
   var v = (bitcast<vec2i>(raw_fetch_u8_2(p, idx)) << vec2u(24)) >> vec2u(24);
   return vec2f(v) / f32(1u << frac);
@@ -1231,6 +1239,11 @@ fn raw_fetch_u8_3(p: ptr<storage, array<u32>>, idx: u32) -> vec3u {{
 fn fetch_u8_3(p: ptr<storage, array<u32>>, idx: u32, frac: u32, le: bool) -> vec3f {{
   var v = raw_fetch_u8_3(p, idx);
   return vec3f(v) / f32(1u << frac);
+}}
+
+fn fetch_s8_3(p: ptr<storage, array<u32>>, idx: u32, le: bool) -> vec3f {{
+  var v = (bitcast<vec3i>(raw_fetch_u8_3(p, idx)) << vec3u(24)) >> vec3u(24);
+  return vec3f(v) / f32(1u << 8);
 }}
 
 fn fetch_i8_3(p: ptr<storage, array<u32>>, idx: u32, frac: u32, le: bool) -> vec3f {{

@@ -70,8 +70,10 @@ typedef struct {
 #define OS_UNCACHED_REGION_PREFIX 0xC000
 #define OS_PHYSICAL_MASK 0x3FFF
 
-#define OS_BASE_CACHED   (OS_CACHED_REGION_PREFIX << 16)
-#define OS_BASE_UNCACHED (OS_UNCACHED_REGION_PREFIX << 16)
+extern uintptr_t OSBaseAddress;
+
+#define OS_BASE_CACHED   (OSBaseAddress)
+#define OS_BASE_UNCACHED (OSBaseAddress)
 
 #ifdef __MWERKS__
 u32 __OSPhysicalMemSize AT_ADDRESS(OS_BASE_CACHED | 0x0028);
@@ -89,13 +91,14 @@ OSThread* __gUnkThread1 AT_ADDRESS(OS_BASE_CACHED | 0x00D8);
 int __gUnknown800030C0[2] AT_ADDRESS(OS_BASE_CACHED | 0x30C0);
 u8 __gUnknown800030E3 AT_ADDRESS(OS_BASE_CACHED | 0x30E3);
 #else
-#define __OSBusClock  486000000
-#define __OSCoreClock (486000000 / 4)
-#endif // __MWERKS__
+#define __OSBusClock  (*(u32 *)(OS_BASE_CACHED + 0x00F8))
+#define __OSCoreClock (*(u32 *)(OS_BASE_CACHED + 0x00FC))
+#endif
 
-#define OS_BUS_CLOCK   __OSBusClock
-#define OS_CORE_CLOCK  __OSCoreClock
-#define OS_TIMER_CLOCK (OS_BUS_CLOCK/4)
+#define OS_TIMER_CLOCK_DIVIDER 4
+#define OS_BUS_CLOCK   150'000'000
+#define OS_CORE_CLOCK  150'000'000
+#define OS_TIMER_CLOCK (OS_BUS_CLOCK/OS_TIMER_CLOCK_DIVIDER)
 
 #define OSTicksToSeconds(ticks)      ((ticks)   / (OS_TIMER_CLOCK))
 #define OSTicksToMilliseconds(ticks) ((ticks)   / (OS_TIMER_CLOCK/1000))
@@ -122,7 +125,9 @@ void __OSPSInit(void);
 void __OSFPRInit(void);
 u32 __OSGetDIConfig(void);
 
+#if 0
 void OSDefaultExceptionHandler(__OSException exception, OSContext* context);
+#endif
 
 typedef struct OSCalendarTime {
     /* 0x00 */ int sec;
@@ -285,6 +290,7 @@ extern int __OSInIPL;
 // This is dumb but we dont have a Metrowerks way to do variadic macros in the macro to make this done in a not scrubby way.
 #define ASSERTMSG1LINE(line, cond, msg, arg1) \
     ((cond) || (OSPanic(__FILE__, line, msg, arg1), 0))
+
 #define ASSERTMSG2LINE(line, cond, msg, arg1, arg2) \
     ((cond) || (OSPanic(__FILE__, line, msg, arg1, arg2), 0))
 
@@ -317,6 +323,7 @@ extern int __OSInIPL;
 #define ASSERTMSG2LINE(line, cond, msg, arg1, arg2) (void)0
 #define ASSERTMSGLINEV(line, cond, ...) (void)0
 #endif
+
 #define ASSERT(cond) ASSERTLINE(__LINE__, cond)
 
 inline s16 __OSf32tos16(__REGISTER f32 inF) {

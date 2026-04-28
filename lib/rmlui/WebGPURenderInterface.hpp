@@ -11,6 +11,8 @@ namespace aurora::rmlui {
 
 inline constexpr uint32_t MaxHighQualityBlurRadius = 64;
 inline constexpr size_t BlurWeightGroupCount = (MaxHighQualityBlurRadius + 4) / 4;
+inline constexpr size_t MaxGradientStops = 16;
+inline constexpr size_t GradientStopPositionGroupCount = (MaxGradientStops + 3) / 4;
 
 struct UniformBlock {
   Rml::Matrix4f MVP;
@@ -32,6 +34,16 @@ struct DropShadowUniformBlock {
   Rml::Vector2f uvOffset;
   Rml::Vector2f texCoordMin;
   Rml::Vector2f texCoordMax;
+};
+
+struct GradientUniformBlock {
+  int32_t function;
+  int32_t numStops;
+  Rml::Vector2f p;
+  Rml::Vector2f v;
+  Rml::Vector2f padding;
+  std::array<Rml::Vector4f, MaxGradientStops> stopColors;
+  std::array<Rml::Vector4f, GradientStopPositionGroupCount> stopPositions;
 };
 
 struct TexCoordLimits {
@@ -87,12 +99,15 @@ class WebGPURenderInterface : public Rml::RenderInterface {
   wgpu::RenderPipeline m_highQualityBlurPipeline;
   wgpu::RenderPipeline m_regionBlitPipeline;
   wgpu::RenderPipeline m_dropShadowPipeline;
+  std::array<wgpu::RenderPipeline, 2> m_gradientPipelines;
   wgpu::PipelineLayout m_pipelineLayout;
   wgpu::PipelineLayout m_blurPipelineLayout;
   wgpu::PipelineLayout m_dropShadowPipelineLayout;
+  wgpu::PipelineLayout m_shaderPipelineLayout;
   wgpu::Buffer m_uniformBuffer;
   wgpu::Buffer m_blurUniformBuffer;
   wgpu::Buffer m_dropShadowUniformBuffer;
+  wgpu::Buffer m_shaderUniformBuffer;
   wgpu::Sampler m_sampler;
   wgpu::TextureFormat m_renderTargetFormat = wgpu::TextureFormat::Undefined;
   wgpu::Texture m_clipMaskStencilTexture;
@@ -108,6 +123,8 @@ class WebGPURenderInterface : public Rml::RenderInterface {
   wgpu::BindGroup m_blurBindGroup;
   wgpu::BindGroupLayout m_dropShadowBindGroupLayout;
   wgpu::BindGroup m_dropShadowBindGroup;
+  wgpu::BindGroupLayout m_shaderBindGroupLayout;
+  wgpu::BindGroup m_shaderBindGroup;
   Rml::TextureHandle m_nullTexture = 0;
   Rml::CompiledGeometryHandle m_clipResetGeometry = 0;
   Rml::Vector2i m_clipResetGeometrySize{};
@@ -125,6 +142,7 @@ class WebGPURenderInterface : public Rml::RenderInterface {
   uint32_t m_uniformCurrentOffset = 0;
   uint32_t m_blurUniformCurrentOffset = 0;
   uint32_t m_dropShadowUniformCurrentOffset = 0;
+  uint32_t m_shaderUniformCurrentOffset = 0;
   bool m_enableScissorRegion = false;
   bool m_clipMaskEnabled = false;
   uint32_t m_stencilRef = 0;
@@ -179,6 +197,10 @@ public:
   Rml::TextureHandle SaveLayerAsTexture() override;
   Rml::CompiledFilterHandle CompileFilter(const Rml::String& name, const Rml::Dictionary& parameters) override;
   void ReleaseFilter(Rml::CompiledFilterHandle filter) override;
+  Rml::CompiledShaderHandle CompileShader(const Rml::String& name, const Rml::Dictionary& parameters) override;
+  void RenderShader(Rml::CompiledShaderHandle shader, Rml::CompiledGeometryHandle geometry, Rml::Vector2f translation,
+                    Rml::TextureHandle texture) override;
+  void ReleaseShader(Rml::CompiledShaderHandle shader) override;
 
   void BeginFrame(const wgpu::CommandEncoder& encoder, const wgpu::TextureView& outputView, const wgpu::Extent3D& size,
                   const gfx::Viewport& viewport);

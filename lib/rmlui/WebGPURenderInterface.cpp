@@ -1,6 +1,7 @@
 #include "WebGPURenderInterface.hpp"
 
 #include <RmlUi/Core/Core.h>
+#include <RmlUi/Core/DecorationTypes.h>
 
 #include <SDL3/SDL_filesystem.h>
 #include <SDL3/SDL_surface.h>
@@ -36,6 +37,10 @@ struct ShaderTextureData {
   wgpu::BindGroup m_bindGroup;
   wgpu::Texture m_texture;
   wgpu::TextureView m_textureView;
+};
+
+struct CompiledShaderData {
+  GradientUniformBlock gradient;
 };
 
 bool is_file(const std::string& path) {
@@ -149,6 +154,16 @@ std::array<Rml::Vector4f, BlurWeightGroupCount> blur_weights(float sigma, uint32
   return weights;
 }
 
+Rml::Vector4f to_colorf(Rml::ColourbPremultiplied color) {
+  constexpr float InvByte = 1.f / 255.f;
+  return {
+      static_cast<float>(color.red) * InvByte,
+      static_cast<float>(color.green) * InvByte,
+      static_cast<float>(color.blue) * InvByte,
+      static_cast<float>(color.alpha) * InvByte,
+  };
+}
+
 Rml::Rectanglei downsample_scissor(Rml::Rectanglei scissor) {
   scissor.p0 = (scissor.p0 + Rml::Vector2i(1)) / 2;
   scissor.p1 = Rml::Math::Max(scissor.p1 / 2, scissor.p0);
@@ -235,6 +250,94 @@ struct Uniforms {
 @fragment
 fn main(in: VertexOutput) -> @location(0) vec4<f32> {
     let color = in.color * textureSample(t, s, in.uv);
+    let corrected_color = pow(color.rgb, vec3<f32>(uniforms.gamma));
+    return vec4<f32>(corrected_color, color.a);
+}
+)"sv;
+
+constexpr std::string_view gradientFragmentSource = R"(
+struct VertexOutput {
+    @builtin(position) position: vec4<f32>,
+    @location(0) color: vec4<f32>,
+    @location(1) uv: vec2<f32>,
+};
+
+struct Uniforms {
+    mvp: mat4x4<f32>,
+    translation: vec4<f32>,
+    gamma: f32,
+};
+
+struct GradientUniforms {
+    function: i32,
+    num_stops: i32,
+    p: vec2<f32>,
+    v: vec2<f32>,
+    padding: vec2<f32>,
+    stop_colors: array<vec4<f32>, 16>,
+    stop_positions: array<vec4<f32>, 4>,
+};
+
+@group(0) @binding(0) var<uniform> uniforms: Uniforms;
+@group(1) @binding(0) var<uniform> gradient: GradientUniforms;
+
+const LINEAR: i32 = 0;
+const RADIAL: i32 = 1;
+const CONIC: i32 = 2;
+const REPEATING_LINEAR: i32 = 3;
+const REPEATING_RADIAL: i32 = 4;
+const REPEATING_CONIC: i32 = 5;
+const PI: f32 = 3.14159265;
+
+fn stop_position(index: i32) -> f32 {
+    let stop_index = u32(index);
+    let group_index = stop_index / 4u;
+    let component_index = stop_index % 4u;
+    return gradient.stop_positions[group_index][component_index];
+}
+
+fn stop_color_mix(t: f32) -> vec4<f32> {
+    var color = gradient.stop_colors[0];
+
+    for (var i = 1; i < 16; i = i + 1) {
+        if (i < gradient.num_stops) {
+            color = mix(color, gradient.stop_colors[u32(i)], smoothstep(stop_position(i - 1), stop_position(i), t));
+        }
+    }
+
+    return color;
+}
+
+@fragment
+fn main(in: VertexOutput) -> @location(0) vec4<f32> {
+    var t = 0.0;
+
+    if (gradient.function == LINEAR || gradient.function == REPEATING_LINEAR) {
+        let dist_square = max(dot(gradient.v, gradient.v), 0.000001);
+        let v = in.uv - gradient.p;
+        t = dot(gradient.v, v) / dist_square;
+    } else if (gradient.function == RADIAL || gradient.function == REPEATING_RADIAL) {
+        let v = in.uv - gradient.p;
+        t = length(gradient.v * v);
+    } else if (gradient.function == CONIC || gradient.function == REPEATING_CONIC) {
+        let v = in.uv - gradient.p;
+        let rotated = vec2<f32>(
+            gradient.v.x * v.x + gradient.v.y * v.y,
+            -gradient.v.y * v.x + gradient.v.x * v.y
+        );
+        t = 0.5 + atan2(-rotated.x, rotated.y) / (2.0 * PI);
+    }
+
+    if (gradient.function == REPEATING_LINEAR ||
+        gradient.function == REPEATING_RADIAL ||
+        gradient.function == REPEATING_CONIC) {
+        let t0 = stop_position(0);
+        let t1 = stop_position(gradient.num_stops - 1);
+        let span = max(t1 - t0, 0.000001);
+        t = t0 + (t - t0) - span * floor((t - t0) / span);
+    }
+
+    let color = in.color * stop_color_mix(t);
     let corrected_color = pow(color.rgb, vec3<f32>(uniforms.gamma));
     return vec4<f32>(corrected_color, color.a);
 }
@@ -1175,6 +1278,94 @@ void WebGPURenderInterface::ReleaseFilter(Rml::CompiledFilterHandle filter) {
   delete reinterpret_cast<CompiledFilter*>(filter);
 }
 
+Rml::CompiledShaderHandle WebGPURenderInterface::CompileShader(const Rml::String& name,
+                                                               const Rml::Dictionary& parameters) {
+  const bool supportedGradient =
+      name == "linear-gradient" || name == "radial-gradient" || name == "conic-gradient";
+  if (!supportedGradient) {
+    Log.warn("Unsupported RmlUi shader '{}'", name);
+    return {};
+  }
+
+  const auto it = parameters.find("color_stop_list");
+  if (it == parameters.end() || it->second.GetType() != Rml::Variant::COLORSTOPLIST) {
+    Log.warn("RmlUi shader '{}' missing color stop list", name);
+    return {};
+  }
+
+  const Rml::ColorStopList& colorStopList = it->second.GetReference<Rml::ColorStopList>();
+  const size_t numStops = std::min(colorStopList.size(), MaxGradientStops);
+  if (numStops == 0) {
+    return {};
+  }
+
+  auto* shader = new CompiledShaderData();
+  const bool repeating = Rml::Get(parameters, "repeating", false);
+
+  constexpr int32_t Linear = 0;
+  constexpr int32_t Radial = 1;
+  constexpr int32_t Conic = 2;
+  constexpr int32_t RepeatingOffset = 3;
+
+  if (name == "linear-gradient") {
+    shader->gradient.function = Linear + (repeating ? RepeatingOffset : 0);
+    shader->gradient.p = Rml::Get(parameters, "p0", Rml::Vector2f(0.f));
+    shader->gradient.v = Rml::Get(parameters, "p1", Rml::Vector2f(0.f)) - shader->gradient.p;
+  } else if (name == "radial-gradient") {
+    shader->gradient.function = Radial + (repeating ? RepeatingOffset : 0);
+    shader->gradient.p = Rml::Get(parameters, "center", Rml::Vector2f(0.f));
+    shader->gradient.v = Rml::Vector2f(1.f) / Rml::Get(parameters, "radius", Rml::Vector2f(1.f));
+  } else if (name == "conic-gradient") {
+    shader->gradient.function = Conic + (repeating ? RepeatingOffset : 0);
+    shader->gradient.p = Rml::Get(parameters, "center", Rml::Vector2f(0.f));
+    const float angle = Rml::Get(parameters, "angle", 0.f);
+    shader->gradient.v = {Rml::Math::Cos(angle), Rml::Math::Sin(angle)};
+  } else {
+    Log.warn("Unsupported RmlUi shader '{}'", name);
+    delete shader;
+    return {};
+  }
+
+  shader->gradient.numStops = static_cast<int32_t>(numStops);
+
+  for (size_t i = 0; i < numStops; ++i) {
+    const Rml::ColorStop& stop = colorStopList[i];
+    shader->gradient.stopColors[i] = to_colorf(stop.color);
+    shader->gradient.stopPositions[i / 4][i % 4] = stop.position.number;
+  }
+
+  return reinterpret_cast<Rml::CompiledShaderHandle>(shader);
+}
+
+void WebGPURenderInterface::RenderShader(Rml::CompiledShaderHandle shader, Rml::CompiledGeometryHandle geometry,
+                                         Rml::Vector2f translation, Rml::TextureHandle) {
+  if (shader == 0 || geometry == 0) {
+    return;
+  }
+
+  SetupRenderState(translation);
+
+  const auto* shaderData = reinterpret_cast<const CompiledShaderData*>(shader);
+  const uint32_t shaderOffset = m_shaderUniformCurrentOffset;
+  m_shaderUniformCurrentOffset += AURORA_ALIGN(sizeof(GradientUniformBlock), 256);
+  webgpu::g_queue.WriteBuffer(m_shaderUniformBuffer, shaderOffset, &shaderData->gradient, sizeof(shaderData->gradient));
+
+  const auto* geometryData = reinterpret_cast<const ShaderGeometryData*>(geometry);
+  m_pass.SetVertexBuffer(0, geometryData->m_vertexBuffer, 0, geometryData->m_vertexBuffer.GetSize());
+  m_pass.SetIndexBuffer(geometryData->m_indexBuffer, wgpu::IndexFormat::Uint32, 0,
+                        geometryData->m_indexBuffer.GetSize());
+  m_pass.SetPipeline(m_gradientPipelines[m_clipMaskEnabled ? 1 : 0]);
+  m_pass.SetBindGroup(0, m_commonBindGroup, 1, &m_uniformCurrentOffset);
+  m_pass.SetBindGroup(1, m_shaderBindGroup, 1, &shaderOffset);
+  m_pass.DrawIndexed(geometryData->m_indexBuffer.GetSize() / sizeof(int));
+
+  m_uniformCurrentOffset += AURORA_ALIGN(sizeof(UniformBlock), 256);
+}
+
+void WebGPURenderInterface::ReleaseShader(Rml::CompiledShaderHandle shader) {
+  delete reinterpret_cast<CompiledShaderData*>(shader);
+}
+
 // code heavily based of imgui wgpu impl
 void WebGPURenderInterface::CreateDeviceObjects() {
   constexpr std::array commonBindGroupLayoutEntries{
@@ -1253,6 +1444,23 @@ void WebGPURenderInterface::CreateDeviceObjects() {
   };
   m_dropShadowBindGroupLayout = webgpu::g_device.CreateBindGroupLayout(&dropShadowBindGroupLayoutDesc);
 
+  constexpr std::array shaderBindGroupLayoutEntries{
+      wgpu::BindGroupLayoutEntry{
+          .binding = 0,
+          .visibility = wgpu::ShaderStage::Fragment,
+          .buffer =
+              {
+                  .type = wgpu::BufferBindingType::Uniform,
+                  .hasDynamicOffset = true,
+              },
+      },
+  };
+  const wgpu::BindGroupLayoutDescriptor shaderBindGroupLayoutDesc{
+      .entryCount = shaderBindGroupLayoutEntries.size(),
+      .entries = shaderBindGroupLayoutEntries.data(),
+  };
+  m_shaderBindGroupLayout = webgpu::g_device.CreateBindGroupLayout(&shaderBindGroupLayoutDesc);
+
   const std::array layouts{m_commonBindGroupLayout, m_imageBindGroupLayout};
   const wgpu::PipelineLayoutDescriptor layoutDesc{
       .bindGroupLayoutCount = layouts.size(),
@@ -1274,8 +1482,16 @@ void WebGPURenderInterface::CreateDeviceObjects() {
   };
   m_dropShadowPipelineLayout = webgpu::g_device.CreatePipelineLayout(&dropShadowLayoutDesc);
 
+  const std::array shaderLayouts{m_commonBindGroupLayout, m_shaderBindGroupLayout};
+  const wgpu::PipelineLayoutDescriptor shaderLayoutDesc{
+      .bindGroupLayoutCount = shaderLayouts.size(),
+      .bindGroupLayouts = shaderLayouts.data(),
+  };
+  m_shaderPipelineLayout = webgpu::g_device.CreatePipelineLayout(&shaderLayoutDesc);
+
   const auto vertexShader = compile_shader(vertexSource, "RmlUi Vertex Shader");
   const auto fragmentShader = compile_shader(fragmentSource, "RmlUi Fragment Shader");
+  const auto gradientFragmentShader = compile_shader(gradientFragmentSource, "RmlUi Gradient Fragment Shader");
   const auto fullscreenVertexShader = compile_shader(fullscreenVertexSource, "RmlUi Fullscreen Vertex Shader");
   const auto blitFragmentShader = compile_shader(blitFragmentSource, "RmlUi Blit Fragment Shader");
   const auto blurFragmentShader = compile_shader(blurFragmentSource, "RmlUi Blur Fragment Shader");
@@ -1308,20 +1524,6 @@ void WebGPURenderInterface::CreateDeviceObjects() {
           .attributes = vertexAttributes.data(),
       },
   };
-  constexpr wgpu::BlendState blendState{
-      .color =
-          {
-              .operation = wgpu::BlendOperation::Add,
-              .srcFactor = wgpu::BlendFactor::SrcAlpha,
-              .dstFactor = wgpu::BlendFactor::OneMinusSrcAlpha,
-          },
-      .alpha =
-          {
-              .operation = wgpu::BlendOperation::Add,
-              .srcFactor = wgpu::BlendFactor::One,
-              .dstFactor = wgpu::BlendFactor::OneMinusSrcAlpha,
-          },
-  };
   constexpr wgpu::BlendState premultipliedBlendState{
       .color =
           {
@@ -1341,7 +1543,7 @@ void WebGPURenderInterface::CreateDeviceObjects() {
                                    wgpu::StencilOperation stencilPass, wgpu::ColorWriteMask colorWriteMask) {
     const wgpu::ColorTargetState colorState{
         .format = m_renderTargetFormat,
-        .blend = &blendState,
+        .blend = &premultipliedBlendState,
         .writeMask = colorWriteMask,
     };
     const wgpu::FragmentState fragmentState{
@@ -1395,6 +1597,56 @@ void WebGPURenderInterface::CreateDeviceObjects() {
   m_pipelines[static_cast<size_t>(PipelineType::ClipIntersect)] =
       create_pipeline("RmlUi Clip Intersect Pipeline", wgpu::CompareFunction::Equal,
                       wgpu::StencilOperation::IncrementClamp, wgpu::ColorWriteMask::None);
+
+  const auto create_gradient_pipeline = [&](const char* label, wgpu::CompareFunction compareFn) {
+    const wgpu::ColorTargetState colorState{
+        .format = m_renderTargetFormat,
+        .blend = &premultipliedBlendState,
+        .writeMask = wgpu::ColorWriteMask::All,
+    };
+    const wgpu::FragmentState fragmentState{
+        .module = gradientFragmentShader.module,
+        .entryPoint = gradientFragmentShader.entryPoint,
+        .targetCount = 1,
+        .targets = &colorState,
+    };
+    const auto stencilFace = stencil_face(compareFn, wgpu::StencilOperation::Keep);
+    const wgpu::DepthStencilState depthStencilState{
+        .format = ClipMaskStencilFormat,
+        .stencilFront = stencilFace,
+        .stencilBack = stencilFace,
+        .stencilReadMask = 0xFF,
+        .stencilWriteMask = 0xFF,
+    };
+    const wgpu::RenderPipelineDescriptor pipelineDesc{
+        .label = label,
+        .layout = m_shaderPipelineLayout,
+        .vertex =
+            {
+                .module = vertexShader.module,
+                .entryPoint = vertexShader.entryPoint,
+                .bufferCount = vertexBufferLayouts.size(),
+                .buffers = vertexBufferLayouts.data(),
+            },
+        .primitive =
+            {
+                .topology = wgpu::PrimitiveTopology::TriangleList,
+                .stripIndexFormat = wgpu::IndexFormat::Undefined,
+                .frontFace = wgpu::FrontFace::CW,
+                .cullMode = wgpu::CullMode::None,
+            },
+        .depthStencil = &depthStencilState,
+        .multisample =
+            {
+                .count = 1,
+            },
+        .fragment = &fragmentState,
+    };
+    return webgpu::g_device.CreateRenderPipeline(&pipelineDesc);
+  };
+
+  m_gradientPipelines[0] = create_gradient_pipeline("RmlUi Gradient Pipeline", wgpu::CompareFunction::Always);
+  m_gradientPipelines[1] = create_gradient_pipeline("RmlUi Masked Gradient Pipeline", wgpu::CompareFunction::Equal);
 
   const auto create_blit_pipeline = [&](const char* label, wgpu::CompareFunction compareFn, bool blend) {
     const wgpu::ColorTargetState colorState{
@@ -1603,6 +1855,12 @@ void WebGPURenderInterface::CreateDeviceObjects() {
       .size = AURORA_ALIGN(UniformBufferSize, 16),
   };
   m_dropShadowUniformBuffer = webgpu::g_device.CreateBuffer(&dropShadowUniformBufferDesc);
+  const wgpu::BufferDescriptor shaderUniformBufferDesc{
+      .label = "RmlUi Shader Uniform Buffer",
+      .usage = wgpu::BufferUsage::CopyDst | wgpu::BufferUsage::Uniform,
+      .size = AURORA_ALIGN(UniformBufferSize, 16),
+  };
+  m_shaderUniformBuffer = webgpu::g_device.CreateBuffer(&shaderUniformBufferDesc);
 
   const std::array commonBindGroupEntries{
       wgpu::BindGroupEntry{
@@ -1652,6 +1910,21 @@ void WebGPURenderInterface::CreateDeviceObjects() {
       .entries = dropShadowBindGroupEntries.data(),
   };
   m_dropShadowBindGroup = webgpu::g_device.CreateBindGroup(&dropShadowBindGroupDescriptor);
+
+  const std::array shaderBindGroupEntries{
+      wgpu::BindGroupEntry{
+          .binding = 0,
+          .buffer = m_shaderUniformBuffer,
+          .offset = 0,
+          .size = AURORA_ALIGN(sizeof(GradientUniformBlock), 16),
+      },
+  };
+  const wgpu::BindGroupDescriptor shaderBindGroupDescriptor{
+      .layout = m_shaderBindGroupLayout,
+      .entryCount = shaderBindGroupEntries.size(),
+      .entries = shaderBindGroupEntries.data(),
+  };
+  m_shaderBindGroup = webgpu::g_device.CreateBindGroup(&shaderBindGroupDescriptor);
 
   switch (m_renderTargetFormat) {
   case wgpu::TextureFormat::ASTC10x10UnormSrgb:
@@ -1750,6 +2023,7 @@ void WebGPURenderInterface::NewFrame() {
   m_uniformCurrentOffset = 0;
   m_blurUniformCurrentOffset = 0;
   m_dropShadowUniformCurrentOffset = 0;
+  m_shaderUniformCurrentOffset = 0;
   m_clipMaskEnabled = false;
   m_stencilRef = 0;
 }

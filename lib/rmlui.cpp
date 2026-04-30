@@ -6,6 +6,7 @@
 
 #include "window.hpp"
 #include "internal.hpp"
+#include "rmlui/SystemInterface_Aurora.h"
 #include "rmlui/WebGPURenderInterface.hpp"
 #include "webgpu/gpu.hpp"
 
@@ -50,6 +51,13 @@ void initialize(const AuroraWindowSize& size) noexcept {
 Rml::Context* get_context() noexcept { return g_context; }
 
 bool is_initialized() noexcept { return g_context != nullptr; }
+
+void set_input_type(InputType type) noexcept {
+  auto* systemInterface = static_cast<SystemInterface_Aurora*>(Backend::GetSystemInterface());
+  if (systemInterface != nullptr) {
+    systemInterface->SetInputType(type);
+  }
+}
 
 void handle_event(SDL_Event& event) noexcept {
   if (g_context == nullptr) {

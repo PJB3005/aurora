@@ -40,7 +40,7 @@ bool start_text_input(SDL_Window* window, InputType type) {
 
 } // namespace
 
-SystemInterface_Aurora::SystemInterface_Aurora() { SetWindow(window::get_sdl_window()); }
+SystemInterface_Aurora::SystemInterface_Aurora() : SystemInterface_SDL(window::get_sdl_window()) {}
 
 void SystemInterface_Aurora::SetInputType(InputType type) noexcept { mTextInputType = type; }
 

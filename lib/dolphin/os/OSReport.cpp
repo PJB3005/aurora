@@ -21,6 +21,7 @@ static std::string FormatToString(const char* msg, va_list list) {
   int ret = vsnprintf(nullptr, 0, msg, list);
   std::string buf(ret, '\0');
   vsnprintf(buf.data(), buf.size(), msg, list);
+  buf.pop_back();
   return buf;
 }
 

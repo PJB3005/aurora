@@ -71,6 +71,7 @@ class WebGPURenderInterface : public Rml::RenderInterface {
   };
 
   enum class FilterType {
+    Opacity,
     Blur,
     DropShadow,
   };
@@ -84,6 +85,7 @@ class WebGPURenderInterface : public Rml::RenderInterface {
 
   struct CompiledFilter {
     FilterType type = FilterType::Blur;
+    float opacity = 1.f;
     float sigma = 0.f;
     Rml::Vector2f offset;
     Rml::ColourbPremultiplied color;
@@ -99,6 +101,7 @@ class WebGPURenderInterface : public Rml::RenderInterface {
   wgpu::RenderPipeline m_highQualityBlurPipeline;
   wgpu::RenderPipeline m_regionBlitPipeline;
   wgpu::RenderPipeline m_dropShadowPipeline;
+  wgpu::RenderPipeline m_opacityPipeline;
   std::array<wgpu::RenderPipeline, 2> m_gradientPipelines;
   wgpu::PipelineLayout m_pipelineLayout;
   wgpu::PipelineLayout m_blurPipelineLayout;

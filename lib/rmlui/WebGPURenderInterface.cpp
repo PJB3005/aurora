@@ -1011,6 +1011,16 @@ void WebGPURenderInterface::RenderFilters(Rml::Span<const Rml::CompiledFilterHan
     }
 
     switch (filter->type) {
+    case FilterType::Opacity: {
+      const wgpu::Color blendColor{filter->opacity, filter->opacity, filter->opacity, filter->opacity};
+      BeginRenderTargetPass(m_postprocessTargets[shadowIndex].view, wgpu::LoadOp::Clear, "RmlUi opacity pass");
+      m_pass.SetBlendConstant(&blendColor);
+      DrawFullscreenTexture(m_postprocessTargets[sourceIndex].bindGroup, m_opacityPipeline);
+      CompositeToTarget(m_postprocessTargets[shadowIndex].bindGroup, m_postprocessTargets[sourceIndex].view,
+                        wgpu::LoadOp::Clear, m_blitPipelines[static_cast<size_t>(BlitPipelineType::Replace)],
+                        "RmlUi opacity result copy pass");
+      break;
+    }
     case FilterType::Blur:
       RenderBlur(filter->sigma, m_postprocessTargets[sourceIndex], m_postprocessTargets[shadowIndex], highQualityBlur);
       break;
@@ -1252,6 +1262,14 @@ Rml::TextureHandle WebGPURenderInterface::SaveLayerAsTexture() {
 
 Rml::CompiledFilterHandle WebGPURenderInterface::CompileFilter(const Rml::String& name,
                                                                const Rml::Dictionary& parameters) {
+  if (name == "opacity") {
+    auto* filter = new CompiledFilter{
+        .type = FilterType::Opacity,
+        .opacity = Rml::Get(parameters, "value", 1.0f),
+    };
+    return reinterpret_cast<Rml::CompiledFilterHandle>(filter);
+  }
+
   if (name == "blur") {
     auto* filter = new CompiledFilter{
         .type = FilterType::Blur,
@@ -1538,6 +1556,20 @@ void WebGPURenderInterface::CreateDeviceObjects() {
               .dstFactor = wgpu::BlendFactor::OneMinusSrcAlpha,
           },
   };
+  constexpr wgpu::BlendState opacityBlendState{
+      .color =
+          {
+              .operation = wgpu::BlendOperation::Add,
+              .srcFactor = wgpu::BlendFactor::Constant,
+              .dstFactor = wgpu::BlendFactor::Zero,
+          },
+      .alpha =
+          {
+              .operation = wgpu::BlendOperation::Add,
+              .srcFactor = wgpu::BlendFactor::Constant,
+              .dstFactor = wgpu::BlendFactor::Zero,
+          },
+  };
 
   const auto create_pipeline = [&](const char* label, wgpu::CompareFunction compareFn,
                                    wgpu::StencilOperation stencilPass, wgpu::ColorWriteMask colorWriteMask) {
@@ -1698,6 +1730,46 @@ void WebGPURenderInterface::CreateDeviceObjects() {
       create_blit_pipeline("RmlUi Blit Replace Pipeline", wgpu::CompareFunction::Always, false);
   m_blitPipelines[static_cast<size_t>(BlitPipelineType::ReplaceMasked)] =
       create_blit_pipeline("RmlUi Blit Replace Masked Pipeline", wgpu::CompareFunction::Equal, false);
+
+  const wgpu::ColorTargetState opacityColorState{
+      .format = m_renderTargetFormat,
+      .blend = &opacityBlendState,
+      .writeMask = wgpu::ColorWriteMask::All,
+  };
+  const wgpu::FragmentState opacityFragmentState{
+      .module = blitFragmentShader.module,
+      .entryPoint = blitFragmentShader.entryPoint,
+      .targetCount = 1,
+      .targets = &opacityColorState,
+  };
+  const auto opacityStencilFace = stencil_face(wgpu::CompareFunction::Always, wgpu::StencilOperation::Keep);
+  const wgpu::DepthStencilState opacityDepthStencilState{
+      .format = ClipMaskStencilFormat,
+      .stencilFront = opacityStencilFace,
+      .stencilBack = opacityStencilFace,
+      .stencilReadMask = 0xFF,
+      .stencilWriteMask = 0xFF,
+  };
+  const wgpu::RenderPipelineDescriptor opacityPipelineDesc{
+      .label = "RmlUi Opacity Pipeline",
+      .layout = m_pipelineLayout,
+      .vertex =
+          {
+              .module = fullscreenVertexShader.module,
+              .entryPoint = fullscreenVertexShader.entryPoint,
+          },
+      .primitive =
+          {
+              .topology = wgpu::PrimitiveTopology::TriangleList,
+          },
+      .depthStencil = &opacityDepthStencilState,
+      .multisample =
+          {
+              .count = 1,
+          },
+      .fragment = &opacityFragmentState,
+  };
+  m_opacityPipeline = webgpu::g_device.CreateRenderPipeline(&opacityPipelineDesc);
 
   const wgpu::ColorTargetState blurColorState{
       .format = m_renderTargetFormat,

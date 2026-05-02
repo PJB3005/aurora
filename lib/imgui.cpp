@@ -5,6 +5,7 @@
 #include <vector>
 
 #include <webgpu/webgpu_cpp.h>
+#include <SDL3/SDL_events.h>
 #include <SDL3/SDL_render.h>
 
 #include "internal.hpp"
@@ -69,6 +70,31 @@ void shutdown() noexcept {
 
 void process_event(const SDL_Event& event) noexcept {
   ImGui_ImplSDL3_ProcessEvent(&event);
+}
+
+bool wants_capture_event(const SDL_Event& event) noexcept {
+  if (ImGui::GetCurrentContext() == nullptr) {
+    return false;
+  }
+
+  const ImGuiIO& io = ImGui::GetIO();
+  switch (event.type) {
+  case SDL_EVENT_MOUSE_MOTION:
+  case SDL_EVENT_MOUSE_BUTTON_DOWN:
+  case SDL_EVENT_MOUSE_BUTTON_UP:
+  case SDL_EVENT_MOUSE_WHEEL:
+  case SDL_EVENT_FINGER_DOWN:
+  case SDL_EVENT_FINGER_MOTION:
+  case SDL_EVENT_FINGER_UP:
+  case SDL_EVENT_FINGER_CANCELED:
+    return io.WantCaptureMouse;
+  case SDL_EVENT_KEY_DOWN:
+  case SDL_EVENT_KEY_UP:
+  case SDL_EVENT_TEXT_INPUT:
+    return io.WantCaptureKeyboard || io.WantTextInput;
+  default:
+    return false;
+  }
 }
 
 void new_frame(const AuroraWindowSize& size) noexcept {

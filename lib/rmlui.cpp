@@ -6,6 +6,7 @@
 
 #include "window.hpp"
 #include "internal.hpp"
+#include "imgui.hpp"
 #include "rmlui/SystemInterface_Aurora.h"
 #include "rmlui/WebGPURenderInterface.hpp"
 #include "webgpu/gpu.hpp"
@@ -60,7 +61,7 @@ void set_input_type(InputType type) noexcept {
 }
 
 void handle_event(SDL_Event& event) noexcept {
-  if (g_context == nullptr) {
+  if (g_context == nullptr || imgui::wants_capture_event(event)) {
     return;
   }
 

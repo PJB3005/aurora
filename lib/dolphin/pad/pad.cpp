@@ -252,13 +252,55 @@ static Sint16 _get_axis_value(aurora::input::GameController* controller, PADAxis
 }
 
 bool gBlockPAD = false;
-uint32_t PADRead(PADStatus* status) {
-  if (gBlockPAD) {
-    return 0;
+bool gSuppressHeldOnRead = false;
+std::array<PADButton, PAD_CHANMAX> gSuppressedButtons{};
+std::array<bool, PAD_CHANMAX> gSuppressLeftTrigger{};
+std::array<bool, PAD_CHANMAX> gSuppressRightTrigger{};
+
+void neutralize_status(PADStatus& status) {
+  status.button = 0;
+  status.stickX = 0;
+  status.stickY = 0;
+  status.substickX = 0;
+  status.substickY = 0;
+  status.triggerLeft = 0;
+  status.triggerRight = 0;
+  status.analogA = 0;
+  status.analogB = 0;
+}
+
+void apply_unblock_suppression(PADStatus& status, u32 port, bool captureHeldInput) {
+  if (captureHeldInput) {
+    gSuppressedButtons[port] |= status.button;
+    gSuppressLeftTrigger[port] = gSuppressLeftTrigger[port] || status.triggerLeft != 0;
+    gSuppressRightTrigger[port] = gSuppressRightTrigger[port] || status.triggerRight != 0;
   }
 
+  gSuppressedButtons[port] &= status.button;
+  status.button &= ~gSuppressedButtons[port];
+
+  if (gSuppressLeftTrigger[port]) {
+    if (status.triggerLeft == 0) {
+      gSuppressLeftTrigger[port] = false;
+    } else {
+      status.triggerLeft = 0;
+    }
+  }
+
+  if (gSuppressRightTrigger[port]) {
+    if (status.triggerRight == 0) {
+      gSuppressRightTrigger[port] = false;
+    } else {
+      status.triggerRight = 0;
+    }
+  }
+}
+
+uint32_t PADRead(PADStatus* status) {
   int numKeys = 0;
   const bool* kbState = SDL_GetKeyboardState(&numKeys);
+  const bool captureHeldInput = gSuppressHeldOnRead && !gBlockPAD;
+  gSuppressHeldOnRead = false;
 
   uint32_t rumbleSupport = 0;
   for (uint32_t i = 0; i < PAD_CHANMAX; ++i) {
@@ -266,6 +308,9 @@ uint32_t PADRead(PADStatus* status) {
     auto controller = aurora::input::get_controller_for_player(i);
     if (controller == nullptr && !g_keyboardBindings[i].m_mappingsSet) {
       status[i].err = PAD_ERR_NO_CONTROLLER;
+      gSuppressedButtons[i] = 0;
+      gSuppressLeftTrigger[i] = false;
+      gSuppressRightTrigger[i] = false;
       continue;
     }
 
@@ -278,7 +323,7 @@ uint32_t PADRead(PADStatus* status) {
                       }
                     });
     }
-    
+
     if (controller) {
       EnsureMappingLoaded(controller);
       std::for_each(
@@ -367,9 +412,16 @@ uint32_t PADRead(PADStatus* status) {
       // Update the LED colors when they exist and the controller is read (which should happen once per frame in most
       // games)
       if (controller->m_hasRgbLed && controller->m_isColorDirty) {
-        SDL_SetGamepadLED(controller->m_controller, controller->m_ledRed, controller->m_ledGreen, controller->m_ledBlue);
+        SDL_SetGamepadLED(controller->m_controller, controller->m_ledRed, controller->m_ledGreen,
+                          controller->m_ledBlue);
         controller->m_isColorDirty = false;
       }
+    }
+
+    if (gBlockPAD) {
+      neutralize_status(status[i]);
+    } else {
+      apply_unblock_suppression(status[i], i, captureHeldInput);
     }
   }
   return rumbleSupport;
@@ -916,7 +968,12 @@ void PADRestoreDefaultMapping(uint32_t port) {
   controller->m_axisMapping = g_defaultAxes;
 }
 
-void PADBlockInput(bool block) { gBlockPAD = block; }
+void PADBlockInput(bool block) {
+  if (gBlockPAD && !block) {
+    gSuppressHeldOnRead = true;
+  }
+  gBlockPAD = block;
+}
 
 SDL_Gamepad* PADGetSDLGamepadForIndex(u32 index) {
   const auto* ctrl = __PADGetControllerForIndex(index);

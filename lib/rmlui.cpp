@@ -65,6 +65,12 @@ void handle_event(SDL_Event& event) noexcept {
     return;
   }
 
+  // RmlSDL::InputEventHandler only passes through -wheel.y, but we want horizontal scrolling too
+  if (event.type == SDL_EVENT_MOUSE_WHEEL) {
+    g_context->ProcessMouseWheel(Rml::Vector2f{event.wheel.x, -event.wheel.y}, RmlSDL::GetKeyModifierState());
+    return;
+  }
+
   RmlSDL::InputEventHandler(g_context, window::get_sdl_window(), event);
 }
 

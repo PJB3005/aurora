@@ -10,7 +10,7 @@ Module Log("aurora::rmlui::FileInterface");
 } // namespace
 
 Rml::FileHandle FileInterface_SDL::Open(const Rml::String& path) {
-  auto stream = SDL_IOFromFile(path.c_str(), "r+b");
+  auto stream = SDL_IOFromFile(path.c_str(), "rb");
 
   if (stream == nullptr) {
     Log.error("Could not open file! Reason: {}", SDL_GetError());

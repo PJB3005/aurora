@@ -1,6 +1,7 @@
 <div align="center">
   <img src="assets/aurora.png" alt="Logo" width="640">
 </div>
+<br/>
 
 Aurora is a source-level GameCube & Wii compatibility layer intended for use with game decompilation projects.
 

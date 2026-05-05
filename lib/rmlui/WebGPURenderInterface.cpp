@@ -1871,9 +1871,9 @@ void WebGPURenderInterface::CreateDeviceObjects() {
   m_dropShadowPipeline = webgpu::g_device.CreateRenderPipeline(&dropShadowPipelineDesc);
 
   const wgpu::SamplerDescriptor samplerDesc{
-      .addressModeU = wgpu::AddressMode::ClampToEdge,
-      .addressModeV = wgpu::AddressMode::ClampToEdge,
-      .addressModeW = wgpu::AddressMode::ClampToEdge,
+      .addressModeU = wgpu::AddressMode::Repeat,
+      .addressModeV = wgpu::AddressMode::Repeat,
+      .addressModeW = wgpu::AddressMode::Repeat,
       .magFilter = wgpu::FilterMode::Linear,
       .minFilter = wgpu::FilterMode::Linear,
       .mipmapFilter = wgpu::MipmapFilterMode::Linear,

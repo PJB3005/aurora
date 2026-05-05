@@ -1675,15 +1675,18 @@ fn fetch_rgba8(p: ptr<storage, array<u32>>, byte_off: u32, le: bool) -> vec4f {{
 }}
 
 fn tev_overflow_f32(in: f32) -> f32 {{
-  return f32(i32(in * 255.0f) & 255) / 255.0f;
+  let byte_space = in * 255.0;
+  return (byte_space - floor(byte_space / 256.0) * 256.0) / 255.0;
 }}
 
 fn tev_overflow_vec3f(in: vec3f) -> vec3f {{
-  return vec3f(vec3i(in * 255.0f) & vec3i(255, 255, 255)) / 255.0f;
+  let byte_space = in * 255.0;
+  return (byte_space - floor(byte_space / 256.0) * 256.0) / 255.0;
 }}
 
 fn tev_overflow_vec4f(in: vec4f) -> vec4f {{
-  return vec4f(vec4i(in * 255.0f) & vec4i(255, 255, 255, 255)) / 255.0f;
+  let byte_space = in * 255.0;
+  return (byte_space - floor(byte_space / 256.0) * 256.0) / 255.0;
 }}
 
 {8}

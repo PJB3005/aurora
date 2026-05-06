@@ -76,6 +76,15 @@ Image get_image(const Rml::String& source) {
                       static_cast<size_t>(row) * static_cast<size_t>(rgbaSurface->pitch);
     auto* dst = ptr.get() + static_cast<size_t>(row) * rowSize;
     std::memcpy(dst, src, rowSize);
+
+    // Convert colors to premultiplied alpha, which is necessary for correct alpha compositing.
+    for (size_t col = 0; col < rowSize; col += 4) {
+      const uint8_t alpha = dst[col + 3];
+      for (size_t channel = 0; channel < 3; ++channel) {
+        dst[col + channel] = static_cast<uint8_t>(
+            (static_cast<uint32_t>(dst[col + channel]) * static_cast<uint32_t>(alpha)) / 255);
+      }
+    }
   }
 
   SDL_DestroySurface(rgbaSurface);

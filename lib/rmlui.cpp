@@ -83,31 +83,6 @@ void ensure_render_target(Rml::Vector2i dimensions) noexcept {
   s_renderTargetCopyBindGroup = webgpu::create_copy_bind_group(s_renderTarget);
 }
 
-void copy_game_to_render_target(const wgpu::CommandEncoder& encoder) noexcept {
-  if (!s_renderTarget.view) {
-    return;
-  }
-  const std::array attachments{
-      wgpu::RenderPassColorAttachment{
-          .view = s_renderTarget.view,
-          .loadOp = wgpu::LoadOp::Clear,
-          .storeOp = wgpu::StoreOp::Store,
-      },
-  };
-  const wgpu::RenderPassDescriptor renderPassDescriptor{
-      .label = "RmlUi game frame copy pass",
-      .colorAttachmentCount = attachments.size(),
-      .colorAttachments = attachments.data(),
-  };
-  const auto pass = encoder.BeginRenderPass(&renderPassDescriptor);
-  pass.SetPipeline(webgpu::g_CopyPipeline);
-  pass.SetBindGroup(0, webgpu::g_CopyBindGroup, 0, nullptr);
-  pass.SetViewport(0.f, 0.f, static_cast<float>(s_renderTarget.size.width),
-                   static_cast<float>(s_renderTarget.size.height), 0.f, 1.f);
-  pass.Draw(3);
-  pass.End();
-}
-
 struct MappedPoint {
   Rml::Vector2f position;
   bool inside = false;
@@ -392,19 +367,22 @@ RenderOutput render(const wgpu::CommandEncoder& encoder, const webgpu::Viewport&
     return {};
   }
 
-  copy_game_to_render_target(encoder);
   sync_context_metrics(dim);
   g_context->Update();
 
   auto* renderInterface = get_render_interface();
   renderInterface->SetWindowSize(g_context->GetDimensions());
-  renderInterface->BeginFrame(encoder, s_renderTarget);
+  renderInterface->BeginFrame(encoder, s_renderTarget, webgpu::present_source());
 
   Backend::BeginFrame();
   g_context->Render();
   Backend::PresentFrame();
 
-  renderInterface->EndFrame();
+  if (!renderInterface->EndFrame()) {
+    // We didn't render anything
+    return {};
+  }
+
   return {
       .texture = &s_renderTarget,
       .copyBindGroup = s_renderTargetCopyBindGroup,

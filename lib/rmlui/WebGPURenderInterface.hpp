@@ -13,8 +13,8 @@ struct TextureWithSampler;
 
 namespace aurora::rmlui {
 
-inline constexpr bool RmlUiWebGPUEnableMSAA = true;
-inline constexpr uint32_t WebGPULayerSampleCount = RmlUiWebGPUEnableMSAA ? 4 : 1;
+inline constexpr bool EnableMsaa = false;
+inline constexpr uint32_t LayerSampleCount = EnableMsaa ? 4 : 1;
 inline constexpr uint32_t MaxBlurRadius = 3;
 inline constexpr size_t MaxGradientStops = 16;
 inline constexpr size_t GradientStopPositionGroupCount = (MaxGradientStops + 3) / 4;

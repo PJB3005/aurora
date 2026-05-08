@@ -802,7 +802,7 @@ void WebGPURenderInterface::SetTransform(const Rml::Matrix4f* transform) {
 
 void WebGPURenderInterface::EnsureRenderTarget(RenderTarget& target, const char* label, const wgpu::Extent3D& size,
                                                bool multisampled) {
-  const bool useMultisampling = multisampled && WebGPULayerSampleCount > 1;
+  const bool useMultisampling = multisampled && LayerSampleCount > 1;
   if (target.view && target.size == size && static_cast<bool>(target.multisampleView) == useMultisampling) {
     return;
   }
@@ -830,7 +830,7 @@ void WebGPURenderInterface::EnsureRenderTarget(RenderTarget& target, const char*
         .size = size,
         .format = m_renderTargetFormat,
         .mipLevelCount = 1,
-        .sampleCount = WebGPULayerSampleCount,
+        .sampleCount = LayerSampleCount,
     };
     target.multisampleTexture = webgpu::g_device.CreateTexture(&multisampleTextureDesc);
     target.multisampleView = target.multisampleTexture.CreateView(nullptr);
@@ -952,7 +952,7 @@ void WebGPURenderInterface::BeginLayerPass(Rml::LayerHandle layer, wgpu::LoadOp 
   EndActivePass();
 
   const RenderTarget& target = m_layers[layer];
-  const bool multisampled = WebGPULayerSampleCount > 1 && static_cast<bool>(target.multisampleView);
+  const bool multisampled = LayerSampleCount > 1 && static_cast<bool>(target.multisampleView);
   const std::array attachments{
       wgpu::RenderPassColorAttachment{
           .view = multisampled ? target.multisampleView : target.view,
@@ -1279,7 +1279,7 @@ void WebGPURenderInterface::BeginFrame(const wgpu::CommandEncoder& encoder, cons
   EnsureFrameTargets(target.size);
   wgpu::Texture multisampleTexture;
   wgpu::TextureView multisampleView;
-  if constexpr (WebGPULayerSampleCount > 1) {
+  if constexpr (LayerSampleCount > 1) {
     if (m_layers[0].multisampleView && m_layers[0].size == target.size) {
       multisampleTexture = m_layers[0].multisampleTexture;
       multisampleView = m_layers[0].multisampleView;
@@ -1291,7 +1291,7 @@ void WebGPURenderInterface::BeginFrame(const wgpu::CommandEncoder& encoder, cons
           .size = target.size,
           .format = m_renderTargetFormat,
           .mipLevelCount = 1,
-          .sampleCount = WebGPULayerSampleCount,
+          .sampleCount = LayerSampleCount,
       };
       multisampleTexture = webgpu::g_device.CreateTexture(&multisampleTextureDesc);
       multisampleView = multisampleTexture.CreateView(nullptr);
@@ -1906,7 +1906,7 @@ void WebGPURenderInterface::CreateDeviceObjects() {
         .depthStencil = &depthStencilState,
         .multisample =
             {
-                .count = WebGPULayerSampleCount,
+                .count = LayerSampleCount,
             },
         .fragment = &fragmentState,
     };
@@ -1964,7 +1964,7 @@ void WebGPURenderInterface::CreateDeviceObjects() {
         .depthStencil = &depthStencilState,
         .multisample =
             {
-                .count = WebGPULayerSampleCount,
+                .count = LayerSampleCount,
             },
         .fragment = &fragmentState,
     };
@@ -2028,20 +2028,20 @@ void WebGPURenderInterface::CreateDeviceObjects() {
       "RmlUi Blit Replace Masked Pipeline", blitFragmentShader, wgpu::CompareFunction::Equal, false, 1, false);
   m_layerBlitPipelines[static_cast<size_t>(BlitPipelineType::Blend)] =
       create_blit_pipeline("RmlUi Layer Blit Blend Pipeline", blitFragmentShader, wgpu::CompareFunction::Always, true,
-                           WebGPULayerSampleCount, true);
+                           LayerSampleCount, true);
   m_layerBlitPipelines[static_cast<size_t>(BlitPipelineType::BlendMasked)] =
       create_blit_pipeline("RmlUi Layer Blit Blend Masked Pipeline", blitFragmentShader, wgpu::CompareFunction::Equal,
-                           true, WebGPULayerSampleCount, true);
+                           true, LayerSampleCount, true);
   m_layerBlitPipelines[static_cast<size_t>(BlitPipelineType::Replace)] =
       create_blit_pipeline("RmlUi Layer Blit Replace Pipeline", blitFragmentShader, wgpu::CompareFunction::Always,
-                           false, WebGPULayerSampleCount, true);
+                           false, LayerSampleCount, true);
   m_layerBlitPipelines[static_cast<size_t>(BlitPipelineType::ReplaceMasked)] =
       create_blit_pipeline("RmlUi Layer Blit Replace Masked Pipeline", blitFragmentShader, wgpu::CompareFunction::Equal,
-                           false, WebGPULayerSampleCount, true);
+                           false, LayerSampleCount, true);
   m_opaqueBlitPipeline = create_blit_pipeline("RmlUi Opaque Blit Pipeline", opaqueBlitFragmentShader,
                                               wgpu::CompareFunction::Always, false, 1, false);
   m_layerOpaqueBlitPipeline = create_blit_pipeline("RmlUi Layer Opaque Blit Pipeline", opaqueBlitFragmentShader,
-                                                   wgpu::CompareFunction::Always, false, WebGPULayerSampleCount, true);
+                                                   wgpu::CompareFunction::Always, false, LayerSampleCount, true);
 
   const wgpu::ColorTargetState opacityColorState{
       .format = m_renderTargetFormat,
@@ -2411,7 +2411,7 @@ wgpu::TextureView WebGPURenderInterface::GetClipMaskStencilView(const wgpu::Exte
       .size = size,
       .format = ClipMaskStencilFormat,
       .mipLevelCount = 1,
-      .sampleCount = WebGPULayerSampleCount,
+      .sampleCount = LayerSampleCount,
   };
   m_clipMaskStencilTexture = webgpu::g_device.CreateTexture(&textureDesc);
 

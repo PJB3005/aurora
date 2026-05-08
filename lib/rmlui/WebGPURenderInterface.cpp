@@ -380,6 +380,62 @@ fn main(@builtin(vertex_index) vtxIdx: u32) -> VertexOutput {
 }
 )"sv;
 
+constexpr std::string_view blurVertexSource = R"(
+struct BlurUniforms {
+    texel_offset: vec2<f32>,
+    radius: f32,
+    padding: f32,
+    tex_coord_min: vec2<f32>,
+    tex_coord_max: vec2<f32>,
+    weights: vec4<f32>,
+};
+
+struct VertexOutput {
+    @builtin(position) position: vec4<f32>,
+    @location(0) uv0: vec2<f32>,
+    @location(1) uv1: vec2<f32>,
+    @location(2) uv2: vec2<f32>,
+    @location(3) uv3: vec2<f32>,
+    @location(4) uv4: vec2<f32>,
+    @location(5) uv5: vec2<f32>,
+    @location(6) uv6: vec2<f32>,
+};
+
+@group(2) @binding(0) var<uniform> blur: BlurUniforms;
+
+const BLUR_NUM_WEIGHTS: i32 = 4;
+
+var<private> pos: array<vec2<f32>, 3> = array<vec2<f32>, 3>(
+    vec2(-1.0, 1.0),
+    vec2(-1.0, -3.0),
+    vec2(3.0, 1.0),
+);
+var<private> uvs: array<vec2<f32>, 3> = array<vec2<f32>, 3>(
+    vec2(0.0, 0.0),
+    vec2(0.0, 2.0),
+    vec2(2.0, 0.0),
+);
+
+fn blur_uv(uv: vec2<f32>, index: i32) -> vec2<f32> {
+    return uv - f32(index - BLUR_NUM_WEIGHTS + 1) * blur.texel_offset;
+}
+
+@vertex
+fn main(@builtin(vertex_index) vtxIdx: u32) -> VertexOutput {
+    let uv = uvs[vtxIdx];
+    var out: VertexOutput;
+    out.position = vec4<f32>(pos[vtxIdx], 0.0, 1.0);
+    out.uv0 = blur_uv(uv, 0);
+    out.uv1 = blur_uv(uv, 1);
+    out.uv2 = blur_uv(uv, 2);
+    out.uv3 = blur_uv(uv, 3);
+    out.uv4 = blur_uv(uv, 4);
+    out.uv5 = blur_uv(uv, 5);
+    out.uv6 = blur_uv(uv, 6);
+    return out;
+}
+)"sv;
+
 constexpr std::string_view blitFragmentSource = R"(
 @group(0) @binding(1) var s: sampler;
 @group(1) @binding(0) var t: texture_2d<f32>;
@@ -445,24 +501,26 @@ struct BlurUniforms {
 @group(1) @binding(0) var t: texture_2d<f32>;
 @group(2) @binding(0) var<uniform> blur: BlurUniforms;
 
-const BLUR_SIZE: i32 = 7;
-const BLUR_NUM_WEIGHTS: i32 = 4;
-
 fn get_weight(index: i32) -> f32 {
     return blur.weights[u32(abs(index))];
 }
 
+fn sample_blur(sample_uv: vec2<f32>, offset_index: i32) -> vec4<f32> {
+    let in_region = step(blur.tex_coord_min, sample_uv) * step(sample_uv, blur.tex_coord_max);
+    return textureSample(t, s, sample_uv) * get_weight(offset_index) * in_region.x * in_region.y;
+}
+
 @fragment
-fn main(@location(0) uv: vec2<f32>) -> @location(0) vec4<f32> {
-    var color = vec4<f32>(0.0);
-
-    for (var i = 0; i < BLUR_SIZE; i = i + 1) {
-        let offset_index = i - BLUR_NUM_WEIGHTS + 1;
-        let sample_uv = uv - f32(offset_index) * blur.texel_offset;
-        let in_region = step(blur.tex_coord_min, sample_uv) * step(sample_uv, blur.tex_coord_max);
-        color += textureSample(t, s, sample_uv) * get_weight(offset_index) * in_region.x * in_region.y;
-    }
-
+fn main(@location(0) uv0: vec2<f32>, @location(1) uv1: vec2<f32>, @location(2) uv2: vec2<f32>,
+        @location(3) uv3: vec2<f32>, @location(4) uv4: vec2<f32>, @location(5) uv5: vec2<f32>,
+        @location(6) uv6: vec2<f32>) -> @location(0) vec4<f32> {
+    var color = sample_blur(uv0, -3);
+    color += sample_blur(uv1, -2);
+    color += sample_blur(uv2, -1);
+    color += sample_blur(uv3, 0);
+    color += sample_blur(uv4, 1);
+    color += sample_blur(uv5, 2);
+    color += sample_blur(uv6, 3);
     return color;
 }
 )"sv;
@@ -1650,7 +1708,7 @@ void WebGPURenderInterface::CreateDeviceObjects() {
   constexpr std::array blurBindGroupLayoutEntries{
       wgpu::BindGroupLayoutEntry{
           .binding = 0,
-          .visibility = wgpu::ShaderStage::Fragment,
+          .visibility = wgpu::ShaderStage::Vertex | wgpu::ShaderStage::Fragment,
           .buffer =
               {
                   .type = wgpu::BufferBindingType::Uniform,
@@ -1744,6 +1802,7 @@ void WebGPURenderInterface::CreateDeviceObjects() {
   const auto fragmentShader = compile_shader(fragmentSource, "RmlUi Fragment Shader");
   const auto gradientFragmentShader = compile_shader(gradientFragmentSource, "RmlUi Gradient Fragment Shader");
   const auto fullscreenVertexShader = compile_shader(fullscreenVertexSource, "RmlUi Fullscreen Vertex Shader");
+  const auto blurVertexShader = compile_shader(blurVertexSource, "RmlUi Blur Vertex Shader");
   const auto blitFragmentShader = compile_shader(blitFragmentSource, "RmlUi Blit Fragment Shader");
   const auto opaqueBlitFragmentShader = compile_shader(opaqueBlitFragmentSource, "RmlUi Opaque Blit Fragment Shader");
   const auto colorMatrixFragmentShader =
@@ -2066,8 +2125,8 @@ void WebGPURenderInterface::CreateDeviceObjects() {
       .layout = m_blurPipelineLayout,
       .vertex =
           {
-              .module = fullscreenVertexShader.module,
-              .entryPoint = fullscreenVertexShader.entryPoint,
+              .module = blurVertexShader.module,
+              .entryPoint = blurVertexShader.entryPoint,
           },
       .primitive =
           {

@@ -221,9 +221,11 @@ bool begin_frame() noexcept {
     webgpu::refresh_surface(false);
     return false;
   case wgpu::SurfaceGetCurrentTextureStatus::Lost:
-  case wgpu::SurfaceGetCurrentTextureStatus::Error:
     Log.warn("Surface texture is {}, releasing surface", magic_enum::enum_name(surfaceTexture.status));
     webgpu::release_surface();
+  case wgpu::SurfaceGetCurrentTextureStatus::Error:
+    Log.warn("Surface texture is {}, dropping surface", magic_enum::enum_name(surfaceTexture.status));
+    g_surface = {};
     return false;
   default:
     Log.error("Failed to get surface texture: {}", magic_enum::enum_name(surfaceTexture.status));
@@ -231,7 +233,9 @@ bool begin_frame() noexcept {
   }
 
   imgui::new_frame(window::get_window_size());
-  gfx::begin_frame();
+  if (!gfx::begin_frame()) {
+    return false;
+  }
 #endif
   return true;
 }
@@ -311,6 +315,7 @@ void end_frame() noexcept {
     }
   } else {
     Log.info("Skipping present; window not presentable");
+    webgpu::release_surface();
   }
   g_currentView = {};
 

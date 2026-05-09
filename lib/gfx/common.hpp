@@ -222,7 +222,7 @@ enum class ShaderType : uint8_t {
 void initialize();
 void shutdown();
 
-void begin_frame();
+bool begin_frame();
 void end_frame(const wgpu::CommandEncoder& cmd);
 uint32_t current_frame() noexcept;
 void render(wgpu::CommandEncoder& cmd);

@@ -21,6 +21,7 @@
 #include <optional>
 #include <string_view>
 
+#include "png_io.hpp"
 #include "../fs_helper.hpp"
 
 using namespace aurora::gx;
@@ -284,7 +285,11 @@ std::string format_replacement_filename(const RuntimeTextureKey& key) {
 
 std::optional<RuntimeTextureKey> parse_replacement_filename(std::string_view filename) noexcept {
   const size_t dot = filename.rfind('.');
-  if (dot == std::string_view::npos || !iequals_ascii(filename.substr(dot), ".dds")) {
+  if (dot == std::string_view::npos) {
+    return std::nullopt;
+  }
+
+  if (!iequals_ascii(filename.substr(dot), ".dds") && !iequals_ascii(filename.substr(dot), ".png")) {
     return std::nullopt;
   }
 
@@ -323,7 +328,7 @@ std::optional<RuntimeTextureKey> parse_replacement_filename(std::string_view fil
     ++index;
   }
 
-  const size_t remaining = partCount - index;
+  size_t remaining = partCount - index;
   if (remaining != 2 && remaining != 3) {
     return std::nullopt;
   }
@@ -339,7 +344,12 @@ std::optional<RuntimeTextureKey> parse_replacement_filename(std::string_view fil
     textureHash = *parsedTex;
   }
 
-  const auto format = parse_u32(parts[partCount - 1]);
+  auto formatPart = parts[partCount - 1];
+  if (formatPart == "arb") {
+    formatPart = parts[partCount - 2];
+    remaining -= 1;
+  }
+  const auto format = parse_u32(formatPart);
   if (!format.has_value()) {
     return std::nullopt;
   }
@@ -370,8 +380,16 @@ std::optional<RuntimeTextureKey> parse_replacement_filename(std::string_view fil
   };
 }
 
+static std::optional<ConvertedTexture> load_texture_file(const std::filesystem::path& path) {
+  if (path.extension() == ".png") {
+    return png::load_png_file(path);
+  } else {
+    return dds::load_dds_file(path);
+  }
+}
+
 std::optional<ConvertedTexture> load_replacement(const std::filesystem::path& path, bool hasMips) noexcept {
-  auto base = dds::load_dds_file(path);
+  auto base = load_texture_file(path);
   if (!base.has_value()) {
     Log.warn("texture_replacement: failed to load texture {}", fs_path_to_string(path.string()));
     return std::nullopt;
@@ -388,7 +406,7 @@ std::optional<ConvertedTexture> load_replacement(const std::filesystem::path& pa
       break;
     }
 
-    auto lvl = dds::load_dds_file(mipPath);
+    auto lvl = load_texture_file(mipPath);
     const uint32_t ew = std::max(base->width >> mipLevel, 1u);
     const uint32_t eh = std::max(base->height >> mipLevel, 1u);
     const bool ok = lvl.has_value() && lvl->format == base->format && lvl->width == ew && lvl->height == eh;
@@ -507,7 +525,7 @@ void build_index() noexcept {
       continue;
     }
 
-    if (!iequals_ascii(path.extension().string(), ".dds")) {
+    if (!iequals_ascii(path.extension().string(), ".dds") && !iequals_ascii(path.extension().string(), ".png")) {
       continue;
     }
 

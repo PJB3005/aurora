@@ -219,3 +219,19 @@ if (NOT TARGET TracyClient)
     message(FATAL_ERROR "Failed to make TracyClient available")
   endif ()
 endif ()
+
+if (NOT TARGET spng_static)
+  message(STATUS "aurora: Fetching libspng")
+
+  FetchContent_Declare(
+          spng
+          URL https://github.com/randy408/libspng/archive/refs/tags/v0.7.4.tar.gz
+          URL_HASH SHA256=47EC02BE6C0A6323044600A9221B049F63E1953FAF816903E7383D4DC4234487
+          DOWNLOAD_EXTRACT_TIMESTAMP TRUE
+  )
+  FetchContent_MakeAvailable(spng)
+
+  if (NOT TARGET spng_static)
+    message(FATAL_ERROR "Failed to make spng_static available")
+  endif ()
+endif ()

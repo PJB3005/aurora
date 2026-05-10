@@ -118,12 +118,14 @@ void set_window_icon() noexcept {
 
 bool SDLCALL lifecycle_event_watch(void*, SDL_Event* event) {
   switch (event->type) {
+#if defined(SDL_PLATFORM_ANDROID) || defined(SDL_PLATFORM_APPLE)
   case SDL_EVENT_WINDOW_MINIMIZED:
     g_backgrounded.store(true, std::memory_order_relaxed);
     break;
   case SDL_EVENT_WINDOW_RESTORED:
     g_backgrounded.store(false, std::memory_order_relaxed);
     break;
+#endif
   default:
     break;
   }

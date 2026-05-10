@@ -84,7 +84,7 @@ if (AURORA_ENABLE_GX)
     set(FT_DISABLE_HARFBUZZ ON CACHE BOOL "" FORCE)
     set(FT_DISABLE_PNG ON CACHE BOOL "" FORCE)
     FetchContent_Declare(Freetype
-      URL https://download.savannah.gnu.org/releases/freetype/freetype-2.14.3.tar.gz
+      URL https://files.twilitrealm.dev/freetype-2.14.3.tar.gz
       URL_HASH SHA256=e61b31ab26358b946e767ed7eb7f4bb2e507da1cfefeb7a8861ace7fd5c899a1
       DOWNLOAD_EXTRACT_TIMESTAMP TRUE
       EXCLUDE_FROM_ALL

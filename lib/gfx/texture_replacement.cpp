@@ -765,4 +765,10 @@ std::optional<TextureHandle> find_replacement(const GXTexObj_& obj) noexcept {
   cache_replacement(key, handle);
   return handle;
 }
+
+std::string build_texture_replacement_name(const GXTexObj_& obj) noexcept {
+  const RuntimeTextureKey key = build_runtime_key(obj);
+  return format_replacement_filename(key);
+}
+
 } // namespace aurora::gfx::texture_replacement

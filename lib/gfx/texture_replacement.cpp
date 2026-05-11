@@ -35,7 +35,6 @@ struct RuntimeTextureKey {
   uint64_t tlutHash = 0;
   uint32_t width = 0;
   uint32_t height = 0;
-  bool hasMips = false;
   bool hasTlut = false;
   uint32_t format = 0;
 
@@ -43,8 +42,7 @@ struct RuntimeTextureKey {
 
   template <typename H>
   friend H AbslHashValue(H h, const RuntimeTextureKey& key) {
-    return H::combine(std::move(h), key.textureHash, key.tlutHash, key.width, key.height, key.hasMips, key.hasTlut,
-                      key.format);
+    return H::combine(std::move(h), key.textureHash, key.tlutHash, key.width, key.height, key.hasTlut, key.format);
   }
 };
 
@@ -62,7 +60,12 @@ struct CachedReplacement {
   std::list<RuntimeTextureKey>::iterator lruIt;
 };
 
-absl::flat_hash_map<RuntimeTextureKey, std::filesystem::path> s_replacementIndex;
+struct ReplacementIndexEntry {
+  std::filesystem::path path;
+  bool hasMips;
+};
+
+absl::flat_hash_map<RuntimeTextureKey, ReplacementIndexEntry> s_replacementIndex;
 absl::flat_hash_map<RuntimeTextureKey, CachedReplacement> s_replacementCache;
 absl::flat_hash_set<RuntimeTextureKey> s_failedKeys;
 absl::flat_hash_set<RuntimeTextureKey> s_reportedMisses;
@@ -259,7 +262,6 @@ RuntimeTextureKey build_runtime_key(const GXTexObj_& obj) noexcept {
   RuntimeTextureKey key{
       .width = obj.width(),
       .height = obj.height(),
-      .hasMips = obj.has_mips(),
       .hasTlut = is_palette_format(obj.format()),
       .format = obj.format(),
   };
@@ -276,11 +278,10 @@ RuntimeTextureKey build_runtime_key(const GXTexObj_& obj) noexcept {
 
 std::string format_replacement_filename(const RuntimeTextureKey& key) {
   if (key.hasTlut) {
-    return fmt::format("tex1_{}x{}{}_{:016x}_{:016x}_{}.dds", key.width, key.height, key.hasMips ? "_m" : "",
+    return fmt::format("tex1_{}x{}_{:016x}_{:016x}_{}.dds", key.width, key.height,
                        key.textureHash, key.tlutHash, key.format);
   }
-  return fmt::format("tex1_{}x{}{}_{:016x}_{}.dds", key.width, key.height, key.hasMips ? "_m" : "", key.textureHash,
-                     key.format);
+  return fmt::format("tex1_{}x{}_{:016x}_{}.dds", key.width, key.height, key.textureHash, key.format);
 }
 
 std::optional<RuntimeTextureKey> parse_replacement_filename(std::string_view filename) noexcept {
@@ -374,7 +375,6 @@ std::optional<RuntimeTextureKey> parse_replacement_filename(std::string_view fil
       .tlutHash = tlutHash,
       .width = dimensions->first,
       .height = dimensions->second,
-      .hasMips = hasMips,
       .hasTlut = hasTlut,
       .format = *format,
   };
@@ -388,20 +388,20 @@ static std::optional<ConvertedTexture> load_texture_file(const std::filesystem::
   }
 }
 
-std::optional<ConvertedTexture> load_replacement(const std::filesystem::path& path, bool hasMips) noexcept {
-  auto base = load_texture_file(path);
+std::optional<ConvertedTexture> load_replacement(const ReplacementIndexEntry& entry) noexcept {
+  auto base = load_texture_file(entry.path);
   if (!base.has_value()) {
-    Log.warn("texture_replacement: failed to load texture {}", fs_path_to_string(path.string()));
+    Log.warn("texture_replacement: failed to load texture {}", fs_path_to_string(entry.path));
     return std::nullopt;
   }
-  if (!hasMips) {
+  if (entry.hasMips) {
     return base;
   }
 
   std::vector<ConvertedTexture> more;
   std::error_code ec;
   for (uint32_t mipLevel = 1;; ++mipLevel) {
-    const auto mipPath = path.parent_path() / fmt::format("{}_mip{}{}", path.stem().string(), mipLevel, path.extension().string());
+    const auto mipPath = entry.path.parent_path() / fmt::format("{}_mip{}{}", entry.path.stem().string(), mipLevel, entry.path.extension().string());
     if (!std::filesystem::is_regular_file(mipPath, ec)) {
       break;
     }
@@ -542,7 +542,7 @@ void build_index() noexcept {
   }
 }
 
-const std::filesystem::path* find_replacement_path(const RuntimeTextureKey& key) noexcept {
+const ReplacementIndexEntry* find_replacement_path(const RuntimeTextureKey& key) noexcept {
   if (const auto it = s_replacementIndex.find(key); it != s_replacementIndex.end()) {
     return &it->second;
   }
@@ -574,8 +574,8 @@ const gfx::TextureHandle* find_cached_replacement(const RuntimeTextureKey& key) 
   return &cached->second.handle;
 }
 
-gfx::TextureHandle load_replacement_texture(const RuntimeTextureKey& key, const std::filesystem::path& path) noexcept {
-  const auto replacement = load_replacement(path, key.hasMips);
+gfx::TextureHandle load_replacement_texture(const RuntimeTextureKey& key, const ReplacementIndexEntry& entry) noexcept {
+  const auto replacement = load_replacement(entry);
   if (!replacement.has_value()) {
     s_failedKeys.insert(key);
     return {};

@@ -522,6 +522,8 @@ void build_index() noexcept {
 
     s_replacementIndex.try_emplace(*parsed, path);
   }
+
+  Log.info("Indexed {} texture replacements", s_replacementIndex.size());
 }
 
 const std::filesystem::path* find_replacement_path(const RuntimeTextureKey& key) noexcept {

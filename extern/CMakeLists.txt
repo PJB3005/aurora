@@ -220,18 +220,20 @@ if (NOT TARGET TracyClient)
   endif ()
 endif ()
 
-if (NOT TARGET spng_static)
-  message(STATUS "aurora: Fetching libspng")
+find_package(png QUIET)
+
+if (NOT TARGET png_static)
+  message(STATUS "aurora: Fetching libpng")
 
   FetchContent_Declare(
-          spng
-          URL https://github.com/randy408/libspng/archive/refs/tags/v0.7.4.tar.gz
-          URL_HASH SHA256=47EC02BE6C0A6323044600A9221B049F63E1953FAF816903E7383D4DC4234487
+          png
+          URL https://codeload.github.com/pnggroup/libpng/tar.gz/refs/tags/v1.6.58
+          URL_HASH SHA256=A9D4DF463D36A6E5F9C29BD6F4967312D17E996C1854F3511F833924EB1993CF
           DOWNLOAD_EXTRACT_TIMESTAMP TRUE
   )
-  FetchContent_MakeAvailable(spng)
+  FetchContent_MakeAvailable(png)
 
-  if (NOT TARGET spng_static)
-    message(FATAL_ERROR "Failed to make spng_static available")
+  if (NOT TARGET png_static)
+    message(FATAL_ERROR "Failed to make png_static available")
   endif ()
 endif ()

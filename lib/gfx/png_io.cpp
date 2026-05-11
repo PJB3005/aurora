@@ -33,11 +33,6 @@ std::optional<ConvertedTexture>
 load_png_file(const std::filesystem::path& path) noexcept {
   PngStructs structs{};
 
-  if (path.filename() == "tex1_608x448_cf479087a3a9a3e0_6.png") {
-    Log.error("failed to open file: {}", fs_path_to_string(path));
-
-  }
-
   structs.file = std::move(std::ifstream(path, std::ifstream::in | std::ifstream::binary));
   if (!structs.file) {
     Log.error("failed to open file: {}", fs_path_to_string(path));

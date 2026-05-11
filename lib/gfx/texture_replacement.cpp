@@ -393,14 +393,12 @@ std::optional<ConvertedTexture> load_replacement(const std::filesystem::path& pa
     const uint32_t eh = std::max(base->height >> mipLevel, 1u);
     const bool ok = lvl.has_value() && lvl->format == base->format && lvl->width == ew && lvl->height == eh;
     if (!ok) {
-      if (more.empty()) {
-        if (!lvl.has_value()) {
-          Log.warn("texture_replacement: could not load mip {}", fs_path_to_string(mipPath));
-        } else {
-          Log.warn("texture_replacement: expected {}x{} for mip {}, got {}x{}", fs_path_to_string(mipPath), ew, eh, lvl->width, lvl->height);
-        }
-        return std::nullopt;
+      if (!lvl.has_value()) {
+        Log.warn("texture_replacement: could not load mip {}", fs_path_to_string(mipPath));
+      } else {
+        Log.warn("texture_replacement: expected {}x{} for mip {}, got {}x{}", ew, eh, fs_path_to_string(mipPath), lvl->width, lvl->height);
       }
+
       break;
     }
     more.push_back(std::move(*lvl));

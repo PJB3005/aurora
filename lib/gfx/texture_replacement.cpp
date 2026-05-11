@@ -394,7 +394,7 @@ std::optional<ConvertedTexture> load_replacement(const ReplacementIndexEntry& en
     Log.warn("texture_replacement: failed to load texture {}", fs_path_to_string(entry.path));
     return std::nullopt;
   }
-  if (entry.hasMips) {
+  if (!entry.hasMips) {
     return base;
   }
 

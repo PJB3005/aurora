@@ -94,7 +94,7 @@ bool is_relative_to(const std::filesystem::path& path, const std::filesystem::pa
   auto pathIt = path.begin();
   auto rootIt = root.begin();
   for (; rootIt != root.end(); ++rootIt, ++pathIt) {
-    if (pathIt == path.end() || !iequals_ascii(pathIt->string(), rootIt->string())) {
+    if (pathIt == path.end() || !iequals_ascii(fs_path_to_string(*pathIt), fs_path_to_string(*rootIt))) {
       return false;
     }
   }
@@ -373,7 +373,7 @@ std::optional<RuntimeTextureKey> parse_replacement_filename(std::string_view fil
 std::optional<ConvertedTexture> load_replacement(const std::filesystem::path& path, bool hasMips) noexcept {
   auto base = dds::load_dds_file(path);
   if (!base.has_value()) {
-    Log.warn("texture_replacement: failed to load texture {}", fs_path_to_string(path.string()));
+    Log.warn("texture_replacement: failed to load texture {}", fs_path_to_string(path));
     return std::nullopt;
   }
   if (!hasMips) {
@@ -383,7 +383,8 @@ std::optional<ConvertedTexture> load_replacement(const std::filesystem::path& pa
   std::vector<ConvertedTexture> more;
   std::error_code ec;
   for (uint32_t mipLevel = 1;; ++mipLevel) {
-    const auto mipPath = path.parent_path() / fmt::format("{}_mip{}{}", path.stem().string(), mipLevel, path.extension().string());
+    const auto mipPath = path.parent_path() / fmt::format("{}_mip{}{}", fs_path_to_string(path.stem()), mipLevel,
+                                                          fs_path_to_string(path.extension()));
     if (!std::filesystem::is_regular_file(mipPath, ec)) {
       break;
     }
@@ -396,7 +397,8 @@ std::optional<ConvertedTexture> load_replacement(const std::filesystem::path& pa
       if (!lvl.has_value()) {
         Log.warn("texture_replacement: could not load mip {}", fs_path_to_string(mipPath));
       } else {
-        Log.warn("texture_replacement: expected {}x{} for mip {}, got {}x{}", ew, eh, fs_path_to_string(mipPath), lvl->width, lvl->height);
+        Log.warn("texture_replacement: expected {}x{} for mip {}, got {}x{}", ew, eh, fs_path_to_string(mipPath),
+                 lvl->width, lvl->height);
       }
 
       break;
@@ -487,9 +489,11 @@ void build_index() noexcept {
   }
 
   std::error_code ec;
-  for (std::filesystem::recursive_directory_iterator it(s_replacementRoot,
-                                                        std::filesystem::directory_options::skip_permission_denied |
-                                                        std::filesystem::directory_options::follow_directory_symlink, ec);
+  for (std::filesystem::recursive_directory_iterator it(
+           s_replacementRoot,
+           std::filesystem::directory_options::skip_permission_denied |
+               std::filesystem::directory_options::follow_directory_symlink,
+           ec);
        it != std::filesystem::recursive_directory_iterator(); it.increment(ec)) {
     if (ec) {
       break;
@@ -505,15 +509,15 @@ void build_index() noexcept {
       continue;
     }
 
-    if (!iequals_ascii(path.extension().string(), ".dds")) {
+    if (!iequals_ascii(fs_path_to_string(path.extension()), ".dds")) {
       continue;
     }
 
-    if (is_sidecar_mip(path.stem().string())) {
+    if (is_sidecar_mip(fs_path_to_string(path.stem()))) {
       continue;
     }
 
-    const auto parsed = parse_replacement_filename(path.filename().string());
+    const auto parsed = parse_replacement_filename(fs_path_to_string(path.filename()));
     if (!parsed.has_value()) {
       continue;
     }
@@ -623,7 +627,9 @@ bool dump_editable_texture_dds(const RuntimeTextureKey& key, const GXTexObj_& ob
     if (tlut == nullptr) {
       return false;
     }
-    pixels = convert_texture_palette(obj.format(), texWidth, texHeight, 1, texData, static_cast<GXTlutFmt>(tlut->format), tlut->entries, {tlut->data.data(), tlut->data.size()});
+    pixels =
+        convert_texture_palette(obj.format(), texWidth, texHeight, 1, texData, static_cast<GXTlutFmt>(tlut->format),
+                                tlut->entries, {tlut->data.data(), tlut->data.size()});
   } else {
     pixels = convert_texture(obj.format(), texWidth, texHeight, 1, texData);
   }

@@ -50,6 +50,7 @@ std::atomic_bool g_surfaceReady = false;
 std::atomic_bool g_surfaceReady = true;
 #endif
 bool g_lastPaused = false;
+bool g_gotFocus = false;
 
 bool operator==(const AuroraWindowSize& lhs, const AuroraWindowSize& rhs) {
   return lhs.width == rhs.width && lhs.height == rhs.height && lhs.fb_width == rhs.fb_width &&
@@ -118,12 +119,14 @@ void set_window_icon() noexcept {
 
 bool SDLCALL lifecycle_event_watch(void*, SDL_Event* event) {
   switch (event->type) {
+#if defined(SDL_PLATFORM_ANDROID) || defined(SDL_PLATFORM_APPLE)
   case SDL_EVENT_WINDOW_MINIMIZED:
     g_backgrounded.store(true, std::memory_order_relaxed);
     break;
   case SDL_EVENT_WINDOW_RESTORED:
     g_backgrounded.store(false, std::memory_order_relaxed);
     break;
+#endif
   default:
     break;
   }
@@ -442,6 +445,11 @@ bool is_paused() noexcept {
   const auto flags = SDL_GetWindowFlags(g_window);
   if ((flags & SDL_WINDOW_HIDDEN) != 0u) {
     return true;
+  }
+  // Wait until the window has received focus before respecting pauseOnFocusLost
+  if (!g_gotFocus) {
+    g_gotFocus = (flags & SDL_WINDOW_INPUT_FOCUS) != 0u;
+    return false;
   }
   return g_config.pauseOnFocusLost && ((flags & SDL_WINDOW_INPUT_FOCUS) == 0u || (flags & SDL_WINDOW_MINIMIZED) != 0u);
 }

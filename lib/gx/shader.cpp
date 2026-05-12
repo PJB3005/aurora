@@ -398,27 +398,116 @@ static std::string_view tev_bias(GXTevBias bias) {
   }
 }
 
-static std::string alpha_compare(GXCompare comp, u8 ref, bool& valid) {
-  const float fref = ref / 255.f;
+struct AlphaCompareExpr {
+  std::string expr;
+  int constant = -1;
+};
+
+static AlphaCompareExpr alpha_compare_const(bool value) { return {value ? "true"s : "false"s, value ? 1 : 0}; }
+
+static AlphaCompareExpr alpha_compare_not(const AlphaCompareExpr& expr) {
+  if (expr.constant != -1) {
+    return alpha_compare_const(expr.constant == 0);
+  }
+  return {fmt::format("!{}", expr.expr), -1};
+}
+
+static AlphaCompareExpr alpha_compare_and(const AlphaCompareExpr& lhs, const AlphaCompareExpr& rhs) {
+  if (lhs.constant == 0 || rhs.constant == 0) {
+    return alpha_compare_const(false);
+  }
+  if (lhs.constant == 1) {
+    return rhs;
+  }
+  if (rhs.constant == 1) {
+    return lhs;
+  }
+  return {fmt::format("({} && {})", lhs.expr, rhs.expr), -1};
+}
+
+static AlphaCompareExpr alpha_compare_or(const AlphaCompareExpr& lhs, const AlphaCompareExpr& rhs) {
+  if (lhs.constant == 1 || rhs.constant == 1) {
+    return alpha_compare_const(true);
+  }
+  if (lhs.constant == 0) {
+    return rhs;
+  }
+  if (rhs.constant == 0) {
+    return lhs;
+  }
+  return {fmt::format("({} || {})", lhs.expr, rhs.expr), -1};
+}
+
+static AlphaCompareExpr alpha_compare_xor(const AlphaCompareExpr& lhs, const AlphaCompareExpr& rhs) {
+  if (lhs.constant != -1 && rhs.constant != -1) {
+    return alpha_compare_const(lhs.constant != rhs.constant);
+  }
+  if (lhs.constant == 0) {
+    return rhs;
+  }
+  if (rhs.constant == 0) {
+    return lhs;
+  }
+  if (lhs.constant == 1) {
+    return alpha_compare_not(rhs);
+  }
+  if (rhs.constant == 1) {
+    return alpha_compare_not(lhs);
+  }
+  return {fmt::format("({} != {})", lhs.expr, rhs.expr), -1};
+}
+
+static AlphaCompareExpr alpha_compare_xnor(const AlphaCompareExpr& lhs, const AlphaCompareExpr& rhs) {
+  if (lhs.constant != -1 && rhs.constant != -1) {
+    return alpha_compare_const(lhs.constant == rhs.constant);
+  }
+  if (lhs.constant == 0) {
+    return alpha_compare_not(rhs);
+  }
+  if (rhs.constant == 0) {
+    return alpha_compare_not(lhs);
+  }
+  if (lhs.constant == 1) {
+    return rhs;
+  }
+  if (rhs.constant == 1) {
+    return lhs;
+  }
+  return {fmt::format("({} == {})", lhs.expr, rhs.expr), -1};
+}
+
+static AlphaCompareExpr alpha_compare(GXCompare comp, u8 ref) {
+  const auto iref = static_cast<u32>(ref);
   switch (comp) {
     DEFAULT_FATAL("invalid alpha comp {}", underlying(comp));
   case GX_NEVER:
-    return "false"s;
+    return alpha_compare_const(false);
   case GX_LESS:
-    return fmt::format("(prev.a < {}f)", fref);
+    if (ref == 0) {
+      return alpha_compare_const(false);
+    }
+    return {fmt::format("(alphaCompare < {}u)", iref), -1};
   case GX_LEQUAL:
-    return fmt::format("(prev.a <= {}f)", fref);
+    if (ref == 255) {
+      return alpha_compare_const(true);
+    }
+    return {fmt::format("(alphaCompare <= {}u)", iref), -1};
   case GX_EQUAL:
-    return fmt::format("(prev.a == {}f)", fref);
+    return {fmt::format("(alphaCompare == {}u)", iref), -1};
   case GX_NEQUAL:
-    return fmt::format("(prev.a != {}f)", fref);
+    return {fmt::format("(alphaCompare != {}u)", iref), -1};
   case GX_GEQUAL:
-    return fmt::format("(prev.a >= {}f)", fref);
+    if (ref == 0) {
+      return alpha_compare_const(true);
+    }
+    return {fmt::format("(alphaCompare >= {}u)", iref), -1};
   case GX_GREATER:
-    return fmt::format("(prev.a > {}f)", fref);
+    if (ref == 255) {
+      return alpha_compare_const(false);
+    }
+    return {fmt::format("(alphaCompare > {}u)", iref), -1};
   case GX_ALWAYS:
-    valid = false;
-    return "true"s;
+    return alpha_compare_const(true);
   }
 }
 
@@ -1335,27 +1424,31 @@ wgpu::ShaderModule build_shader(const ShaderConfig& config) noexcept {
   }
   fragmentFn += "\n    prev = tev_overflow_vec4f(prev);";
   if (config.alphaCompare) {
-    bool comp0Valid = true;
-    bool comp1Valid = true;
-    std::string comp0 = alpha_compare(config.alphaCompare.comp0, config.alphaCompare.ref0, comp0Valid);
-    std::string comp1 = alpha_compare(config.alphaCompare.comp1, config.alphaCompare.ref1, comp1Valid);
-    if (comp0Valid || comp1Valid) {
-      fragmentFn += "\n    // Alpha compare";
-      switch (config.alphaCompare.op) {
-        DEFAULT_FATAL("invalid alpha compare op {}", underlying(config.alphaCompare.op));
-      case GX_AOP_AND:
-        fragmentFn += fmt::format("\n    if (!({} && {})) {{ discard; }}", comp0, comp1);
-        break;
-      case GX_AOP_OR:
-        fragmentFn += fmt::format("\n    if (!({} || {})) {{ discard; }}", comp0, comp1);
-        break;
-      case GX_AOP_XOR:
-        fragmentFn += fmt::format("\n    if (({} == {})) {{ discard; }}", comp0, comp1);
-        break;
-      case GX_AOP_XNOR:
-        fragmentFn += fmt::format("\n    if (({} != {})) {{ discard; }}", comp0, comp1);
-        break;
-      }
+    const auto comp0 = alpha_compare(config.alphaCompare.comp0, config.alphaCompare.ref0);
+    const auto comp1 = alpha_compare(config.alphaCompare.comp1, config.alphaCompare.ref1);
+    AlphaCompareExpr pass;
+    switch (config.alphaCompare.op) {
+      DEFAULT_FATAL("invalid alpha compare op {}", underlying(config.alphaCompare.op));
+    case GX_AOP_AND:
+      pass = alpha_compare_and(comp0, comp1);
+      break;
+    case GX_AOP_OR:
+      pass = alpha_compare_or(comp0, comp1);
+      break;
+    case GX_AOP_XOR:
+      pass = alpha_compare_xor(comp0, comp1);
+      break;
+    case GX_AOP_XNOR:
+      pass = alpha_compare_xnor(comp0, comp1);
+      break;
+    }
+    const auto discard = alpha_compare_not(pass);
+    if (discard.constant == 1) {
+      fragmentFn += "\n    // Alpha compare\n    discard;";
+    } else if (discard.constant != 0) {
+      fragmentFn += "\n    // Alpha compare"
+                    "\n    let alphaCompare = u32(round(clamp(prev.a, 0.0, 1.0) * 255.0));";
+      fragmentFn += fmt::format("\n    if ({}) {{ discard; }}", discard.expr);
     }
   }
   if constexpr (EnableNormalVisualization) {

@@ -369,6 +369,9 @@ SDL_JoystickID add_controller(SDL_JoystickID which) noexcept {
       return -1;
     }
     controller.m_isGameCube = SDL_GetGamepadType(ctrl) == SDL_GAMEPAD_TYPE_GAMECUBE;
+    if (controller.m_isGameCube || (SDL_GetGamepadType(ctrl) == SDL_GAMEPAD_TYPE_NINTENDO_SWITCH_PRO && controller.m_pid == 0x2073)) {
+      controller.m_deadZones.emulateTriggers = false;
+    }
     const auto props = SDL_GetGamepadProperties(ctrl);
     controller.m_hasRumble = SDL_GetBooleanProperty(props, SDL_PROP_GAMEPAD_CAP_RUMBLE_BOOLEAN, true);
     controller.m_hasRgbLed = SDL_GetBooleanProperty(props, SDL_PROP_GAMEPAD_CAP_RGB_LED_BOOLEAN, false);

@@ -1,6 +1,7 @@
 #include "imgui.hpp"
 
 #include <cstddef>
+#include <cmath>
 #include <string>
 #include <vector>
 
@@ -69,7 +70,13 @@ void shutdown() noexcept {
 }
 
 void process_event(const SDL_Event& event) noexcept {
-  ImGui_ImplSDL3_ProcessEvent(&event);
+  auto renderEvent = event;
+  if (g_useSdlRenderer) {
+    if (SDL_Renderer* renderer = window::get_sdl_renderer()) {
+      SDL_ConvertEventToRenderCoordinates(renderer, &renderEvent);
+    }
+  }
+  ImGui_ImplSDL3_ProcessEvent(&renderEvent);
 }
 
 bool wants_capture_event(const SDL_Event& event) noexcept {
@@ -99,12 +106,29 @@ bool wants_capture_event(const SDL_Event& event) noexcept {
 
 void new_frame(const AuroraWindowSize& size) noexcept {
   ZoneScoped;
-  const float framebufferScaleX =
-      size.width > 0 ? static_cast<float>(size.native_fb_width) / static_cast<float>(size.width) : 1.0f;
-  const float framebufferScaleY =
-      size.height > 0 ? static_cast<float>(size.native_fb_height) / static_cast<float>(size.height) : 1.0f;
+  ImVec2 framebufferScale{
+      size.width > 0 ? static_cast<float>(size.native_fb_width) / static_cast<float>(size.width) : 1.0f,
+      size.height > 0 ? static_cast<float>(size.native_fb_height) / static_cast<float>(size.height) : 1.0f,
+  };
+  ImVec2 displaySize{static_cast<float>(size.width), static_cast<float>(size.height)};
 
   if (g_useSdlRenderer) {
+    if (SDL_Renderer* renderer = window::get_sdl_renderer()) {
+      float renderScaleX = 1.0f;
+      float renderScaleY = 1.0f;
+      SDL_GetRenderScale(renderer, &renderScaleX, &renderScaleY);
+      if (renderScaleX > 0.0f && renderScaleY > 0.0f &&
+          (std::fabs(renderScaleX - 1.0f) > 0.0001f || std::fabs(renderScaleY - 1.0f) > 0.0001f)) {
+        int outputWidth = static_cast<int>(size.native_fb_width);
+        int outputHeight = static_cast<int>(size.native_fb_height);
+        SDL_GetRenderOutputSize(renderer, &outputWidth, &outputHeight);
+        displaySize = {
+            static_cast<float>(outputWidth) / renderScaleX,
+            static_cast<float>(outputHeight) / renderScaleY,
+        };
+        framebufferScale = {renderScaleX, renderScaleY};
+      }
+    }
     ImGui_ImplSDLRenderer3_NewFrame();
     g_scale = size.scale;
   } else {
@@ -114,16 +138,16 @@ void new_frame(const AuroraWindowSize& size) noexcept {
       }
       g_scale = size.scale;
     }
+    if (!ImGui::GetIO().Fonts->IsBuilt()) {
+      ImGui_ImplWGPU_CreateDeviceObjects();
+    }
     ImGui_ImplWGPU_NewFrame();
   }
   ImGui_ImplSDL3_NewFrame();
 
   ImGuiIO& io = ImGui::GetIO();
-  io.DisplayFramebufferScale = {framebufferScaleX, framebufferScaleY};
-  ImGui::GetIO().DisplaySize = {
-      static_cast<float>(size.width),
-      static_cast<float>(size.height),
-  };
+  io.DisplayFramebufferScale = framebufferScale;
+  ImGui::GetIO().DisplaySize = displaySize;
   ImGui::NewFrame();
 }
 

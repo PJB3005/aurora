@@ -16,9 +16,9 @@ std::array<PADButtonMapping, PAD_BUTTON_COUNT> g_defaultButtonsStandard{{
     {SDL_GAMEPAD_BUTTON_WEST, PAD_BUTTON_X},
     {SDL_GAMEPAD_BUTTON_NORTH, PAD_BUTTON_Y},
     {SDL_GAMEPAD_BUTTON_START, PAD_BUTTON_START},
-    {SDL_GAMEPAD_BUTTON_BACK, PAD_TRIGGER_Z},
-    {SDL_GAMEPAD_BUTTON_LEFT_SHOULDER, PAD_TRIGGER_L},
-    {SDL_GAMEPAD_BUTTON_RIGHT_SHOULDER, PAD_TRIGGER_R},
+    {SDL_GAMEPAD_BUTTON_RIGHT_SHOULDER, PAD_TRIGGER_Z},
+    {PAD_NATIVE_BUTTON_INVALID, PAD_TRIGGER_L},
+    {PAD_NATIVE_BUTTON_INVALID, PAD_TRIGGER_R},
     {SDL_GAMEPAD_BUTTON_DPAD_UP, PAD_BUTTON_UP},
     {SDL_GAMEPAD_BUTTON_DPAD_DOWN, PAD_BUTTON_DOWN},
     {SDL_GAMEPAD_BUTTON_DPAD_LEFT, PAD_BUTTON_LEFT},
@@ -31,9 +31,9 @@ std::array<PADButtonMapping, PAD_BUTTON_COUNT> g_defaultButtonsXBox360{{
     {SDL_GAMEPAD_BUTTON_WEST, PAD_BUTTON_X},
     {SDL_GAMEPAD_BUTTON_NORTH, PAD_BUTTON_Y},
     {SDL_GAMEPAD_BUTTON_START, PAD_BUTTON_START},
-    {SDL_GAMEPAD_BUTTON_BACK, PAD_TRIGGER_Z},
-    {SDL_GAMEPAD_BUTTON_LEFT_SHOULDER, PAD_TRIGGER_L},
-    {SDL_GAMEPAD_BUTTON_RIGHT_SHOULDER, PAD_TRIGGER_R},
+    {SDL_GAMEPAD_BUTTON_RIGHT_SHOULDER, PAD_TRIGGER_Z},
+    {PAD_NATIVE_BUTTON_INVALID, PAD_TRIGGER_L},
+    {PAD_NATIVE_BUTTON_INVALID, PAD_TRIGGER_R},
     {SDL_GAMEPAD_BUTTON_DPAD_UP, PAD_BUTTON_UP},
     {SDL_GAMEPAD_BUTTON_DPAD_DOWN, PAD_BUTTON_DOWN},
     {SDL_GAMEPAD_BUTTON_DPAD_LEFT, PAD_BUTTON_LEFT},
@@ -46,9 +46,9 @@ std::array<PADButtonMapping, PAD_BUTTON_COUNT> g_defaultButtonsXBoxOne{{
     {SDL_GAMEPAD_BUTTON_WEST, PAD_BUTTON_X},
     {SDL_GAMEPAD_BUTTON_NORTH, PAD_BUTTON_Y},
     {SDL_GAMEPAD_BUTTON_START, PAD_BUTTON_START},
-    {SDL_GAMEPAD_BUTTON_BACK, PAD_TRIGGER_Z},
-    {SDL_GAMEPAD_BUTTON_LEFT_SHOULDER, PAD_TRIGGER_L},
-    {SDL_GAMEPAD_BUTTON_RIGHT_SHOULDER, PAD_TRIGGER_R},
+    {SDL_GAMEPAD_BUTTON_RIGHT_SHOULDER, PAD_TRIGGER_Z},
+    {PAD_NATIVE_BUTTON_INVALID, PAD_TRIGGER_L},
+    {PAD_NATIVE_BUTTON_INVALID, PAD_TRIGGER_R},
     {SDL_GAMEPAD_BUTTON_DPAD_UP, PAD_BUTTON_UP},
     {SDL_GAMEPAD_BUTTON_DPAD_DOWN, PAD_BUTTON_DOWN},
     {SDL_GAMEPAD_BUTTON_DPAD_LEFT, PAD_BUTTON_LEFT},
@@ -61,9 +61,9 @@ std::array<PADButtonMapping, PAD_BUTTON_COUNT> g_defaultButtonsPS3{{
     {SDL_GAMEPAD_BUTTON_WEST, PAD_BUTTON_X},
     {SDL_GAMEPAD_BUTTON_NORTH, PAD_BUTTON_Y},
     {SDL_GAMEPAD_BUTTON_START, PAD_BUTTON_START},
-    {SDL_GAMEPAD_BUTTON_BACK, PAD_TRIGGER_Z},
-    {SDL_GAMEPAD_BUTTON_LEFT_SHOULDER, PAD_TRIGGER_L},
-    {SDL_GAMEPAD_BUTTON_RIGHT_SHOULDER, PAD_TRIGGER_R},
+    {SDL_GAMEPAD_BUTTON_RIGHT_SHOULDER, PAD_TRIGGER_Z},
+    {PAD_NATIVE_BUTTON_INVALID, PAD_TRIGGER_L},
+    {PAD_NATIVE_BUTTON_INVALID, PAD_TRIGGER_R},
     {SDL_GAMEPAD_BUTTON_DPAD_UP, PAD_BUTTON_UP},
     {SDL_GAMEPAD_BUTTON_DPAD_DOWN, PAD_BUTTON_DOWN},
     {SDL_GAMEPAD_BUTTON_DPAD_LEFT, PAD_BUTTON_LEFT},
@@ -76,9 +76,9 @@ std::array<PADButtonMapping, PAD_BUTTON_COUNT> g_defaultButtonsPS4{{
     {SDL_GAMEPAD_BUTTON_WEST, PAD_BUTTON_X},
     {SDL_GAMEPAD_BUTTON_NORTH, PAD_BUTTON_Y},
     {SDL_GAMEPAD_BUTTON_START, PAD_BUTTON_START},
-    {SDL_GAMEPAD_BUTTON_BACK, PAD_TRIGGER_Z},
-    {SDL_GAMEPAD_BUTTON_LEFT_SHOULDER, PAD_TRIGGER_L},
-    {SDL_GAMEPAD_BUTTON_RIGHT_SHOULDER, PAD_TRIGGER_R},
+    {SDL_GAMEPAD_BUTTON_RIGHT_SHOULDER, PAD_TRIGGER_Z},
+    {PAD_NATIVE_BUTTON_INVALID, PAD_TRIGGER_L},
+    {PAD_NATIVE_BUTTON_INVALID, PAD_TRIGGER_R},
     {SDL_GAMEPAD_BUTTON_DPAD_UP, PAD_BUTTON_UP},
     {SDL_GAMEPAD_BUTTON_DPAD_DOWN, PAD_BUTTON_DOWN},
     {SDL_GAMEPAD_BUTTON_DPAD_LEFT, PAD_BUTTON_LEFT},
@@ -91,9 +91,9 @@ std::array<PADButtonMapping, PAD_BUTTON_COUNT> g_defaultButtonsPS5{{
     {SDL_GAMEPAD_BUTTON_WEST, PAD_BUTTON_X},
     {SDL_GAMEPAD_BUTTON_NORTH, PAD_BUTTON_Y},
     {SDL_GAMEPAD_BUTTON_START, PAD_BUTTON_START},
-    {SDL_GAMEPAD_BUTTON_BACK, PAD_TRIGGER_Z},
-    {SDL_GAMEPAD_BUTTON_LEFT_SHOULDER, PAD_TRIGGER_L},
-    {SDL_GAMEPAD_BUTTON_RIGHT_SHOULDER, PAD_TRIGGER_R},
+    {SDL_GAMEPAD_BUTTON_RIGHT_SHOULDER, PAD_TRIGGER_Z},
+    {PAD_NATIVE_BUTTON_INVALID, PAD_TRIGGER_L},
+    {PAD_NATIVE_BUTTON_INVALID, PAD_TRIGGER_R},
     {SDL_GAMEPAD_BUTTON_DPAD_UP, PAD_BUTTON_UP},
     {SDL_GAMEPAD_BUTTON_DPAD_DOWN, PAD_BUTTON_DOWN},
     {SDL_GAMEPAD_BUTTON_DPAD_LEFT, PAD_BUTTON_LEFT},
@@ -136,9 +136,9 @@ std::array<PADButtonMapping, PAD_BUTTON_COUNT> g_defaultButtonsProCon{{
     {SDL_GAMEPAD_BUTTON_WEST, PAD_BUTTON_X},
     {SDL_GAMEPAD_BUTTON_NORTH, PAD_BUTTON_Y},
     {SDL_GAMEPAD_BUTTON_START, PAD_BUTTON_START},
-    {SDL_GAMEPAD_BUTTON_BACK, PAD_TRIGGER_Z},
-    {SDL_GAMEPAD_BUTTON_LEFT_SHOULDER, PAD_TRIGGER_L},
-    {SDL_GAMEPAD_BUTTON_RIGHT_SHOULDER, PAD_TRIGGER_R},
+    {SDL_GAMEPAD_BUTTON_RIGHT_SHOULDER, PAD_TRIGGER_Z},
+    {PAD_NATIVE_BUTTON_INVALID, PAD_TRIGGER_L},
+    {PAD_NATIVE_BUTTON_INVALID, PAD_TRIGGER_R},
     {SDL_GAMEPAD_BUTTON_DPAD_UP, PAD_BUTTON_UP},
     {SDL_GAMEPAD_BUTTON_DPAD_DOWN, PAD_BUTTON_DOWN},
     {SDL_GAMEPAD_BUTTON_DPAD_LEFT, PAD_BUTTON_LEFT},
@@ -151,9 +151,9 @@ std::array<PADButtonMapping, PAD_BUTTON_COUNT> g_defaultButtonsJoyConRight{{
     {SDL_GAMEPAD_BUTTON_WEST, PAD_BUTTON_X},
     {SDL_GAMEPAD_BUTTON_NORTH, PAD_BUTTON_Y},
     {SDL_GAMEPAD_BUTTON_START, PAD_BUTTON_START},
-    {SDL_GAMEPAD_BUTTON_BACK, PAD_TRIGGER_Z},
-    {SDL_GAMEPAD_BUTTON_LEFT_SHOULDER, PAD_TRIGGER_L},
-    {SDL_GAMEPAD_BUTTON_RIGHT_SHOULDER, PAD_TRIGGER_R},
+    {SDL_GAMEPAD_BUTTON_RIGHT_SHOULDER, PAD_TRIGGER_Z},
+    {PAD_NATIVE_BUTTON_INVALID, PAD_TRIGGER_L},
+    {PAD_NATIVE_BUTTON_INVALID, PAD_TRIGGER_R},
     {SDL_GAMEPAD_BUTTON_DPAD_UP, PAD_BUTTON_UP},
     {SDL_GAMEPAD_BUTTON_DPAD_DOWN, PAD_BUTTON_DOWN},
     {SDL_GAMEPAD_BUTTON_DPAD_LEFT, PAD_BUTTON_LEFT},
@@ -166,9 +166,9 @@ std::array<PADButtonMapping, PAD_BUTTON_COUNT> g_defaultButtonsJoyConLeft{{
     {SDL_GAMEPAD_BUTTON_WEST, PAD_BUTTON_X},
     {SDL_GAMEPAD_BUTTON_NORTH, PAD_BUTTON_Y},
     {SDL_GAMEPAD_BUTTON_START, PAD_BUTTON_START},
-    {SDL_GAMEPAD_BUTTON_BACK, PAD_TRIGGER_Z},
-    {SDL_GAMEPAD_BUTTON_LEFT_SHOULDER, PAD_TRIGGER_L},
-    {SDL_GAMEPAD_BUTTON_RIGHT_SHOULDER, PAD_TRIGGER_R},
+    {SDL_GAMEPAD_BUTTON_RIGHT_SHOULDER, PAD_TRIGGER_Z},
+    {PAD_NATIVE_BUTTON_INVALID, PAD_TRIGGER_L},
+    {PAD_NATIVE_BUTTON_INVALID, PAD_TRIGGER_R},
     {SDL_GAMEPAD_BUTTON_DPAD_UP, PAD_BUTTON_UP},
     {SDL_GAMEPAD_BUTTON_DPAD_DOWN, PAD_BUTTON_DOWN},
     {SDL_GAMEPAD_BUTTON_DPAD_LEFT, PAD_BUTTON_LEFT},
@@ -181,9 +181,9 @@ std::array<PADButtonMapping, PAD_BUTTON_COUNT> g_defaultButtonsJoyPair{{
     {SDL_GAMEPAD_BUTTON_WEST, PAD_BUTTON_X},
     {SDL_GAMEPAD_BUTTON_NORTH, PAD_BUTTON_Y},
     {SDL_GAMEPAD_BUTTON_START, PAD_BUTTON_START},
-    {SDL_GAMEPAD_BUTTON_BACK, PAD_TRIGGER_Z},
-    {SDL_GAMEPAD_BUTTON_LEFT_SHOULDER, PAD_TRIGGER_L},
-    {SDL_GAMEPAD_BUTTON_RIGHT_SHOULDER, PAD_TRIGGER_R},
+    {SDL_GAMEPAD_BUTTON_RIGHT_SHOULDER, PAD_TRIGGER_Z},
+    {PAD_NATIVE_BUTTON_INVALID, PAD_TRIGGER_L},
+    {PAD_NATIVE_BUTTON_INVALID, PAD_TRIGGER_R},
     {SDL_GAMEPAD_BUTTON_DPAD_UP, PAD_BUTTON_UP},
     {SDL_GAMEPAD_BUTTON_DPAD_DOWN, PAD_BUTTON_DOWN},
     {SDL_GAMEPAD_BUTTON_DPAD_LEFT, PAD_BUTTON_LEFT},
@@ -680,11 +680,20 @@ uint32_t PADRead(PADStatus* status) {
 
     if (controller) {
       EnsureMappingLoaded(controller);
+      bool leftTriggerSet = false;
+      bool rightTriggerSet = false;
       std::for_each(
           controller->m_buttonMapping.begin(), controller->m_buttonMapping.end(),
-          [&controller, &i, &status](const auto& mapping) {
+          [&controller, &i, &status, &leftTriggerSet, &rightTriggerSet](const auto& mapping) {
             if (SDL_GetGamepadButton(controller->m_controller, static_cast<SDL_GamepadButton>(mapping.nativeButton))) {
               status[i].button |= mapping.padButton;
+            }
+            
+            if (mapping.padButton == PAD_TRIGGER_L && mapping.nativeButton != PAD_NATIVE_BUTTON_INVALID) {
+              leftTriggerSet = true;
+            }
+            if (mapping.padButton == PAD_TRIGGER_R && mapping.nativeButton != PAD_NATIVE_BUTTON_INVALID) {
+              rightTriggerSet = true;
             }
           });
 
@@ -772,10 +781,10 @@ uint32_t PADRead(PADStatus* status) {
       Sint16 tr = std::max((Sint16)0, _get_axis_value(controller, PAD_AXIS_TRIGGER_R));
 
       if (/*!controller->m_isGameCube && */ controller->m_deadZones.emulateTriggers) {
-        if (tl > controller->m_deadZones.leftTriggerActivationZone) {
+        if (!leftTriggerSet && tl > controller->m_deadZones.leftTriggerActivationZone) {
           status[i].button |= PAD_TRIGGER_L;
         }
-        if (tr > controller->m_deadZones.rightTriggerActivationZone) {
+        if (!rightTriggerSet && tr > controller->m_deadZones.rightTriggerActivationZone) {
           status[i].button |= PAD_TRIGGER_R;
         }
       }
@@ -1136,7 +1145,7 @@ void PADClearKeyBindings(u32 port) {
 }
 
 constexpr uint32_t k_keyboardMagic = SBIG('KBND');
-constexpr int32_t k_keyboardVersion = 2;
+constexpr int32_t k_keyboardVersion = 3;
 
 static void load_keyboard_bindings() {
   std::filesystem::path filePath = std::filesystem::path{aurora::g_config.configPath} / "keyboard_bindings.dat";
@@ -1170,6 +1179,30 @@ static void load_keyboard_bindings() {
     SDL_ReadIO(file, &state.m_mappingsSet, sizeof(bool));
     SDL_ReadIO(file, state.m_buttonMapping.data(), sizeof(PADKeyButtonBinding) * PAD_BUTTON_COUNT);
     SDL_ReadIO(file, state.m_axisMapping.data(), sizeof(PADKeyAxisBinding) * PAD_AXIS_COUNT);
+
+    bool kbButtonCorrupt = false;
+    for (uint32_t i = 0; i < PAD_BUTTON_COUNT; ++i) {
+      if (state.m_buttonMapping[i].padButton != g_defaultKeys[i].padButton) {
+        kbButtonCorrupt = true;
+        break;
+      }
+    }
+    if (kbButtonCorrupt) {
+      aurora::input::Log.warn("keyboard_bindings.dat port={}: corrupt button identifiers, resetting to defaults", port);
+      state.m_buttonMapping = g_defaultKeys;
+    }
+
+    bool kbAxisCorrupt = false;
+    for (uint32_t i = 0; i < PAD_AXIS_COUNT; ++i) {
+      if (state.m_axisMapping[i].padAxis != g_defaultKeyAxis[i].padAxis) {
+        kbAxisCorrupt = true;
+        break;
+      }
+    }
+    if (kbAxisCorrupt) {
+      aurora::input::Log.warn("keyboard_bindings.dat port={}: corrupt axis identifiers, resetting to defaults", port);
+      state.m_axisMapping = g_defaultKeyAxis;
+    }
 
     if (state.m_mappingsSet) {
       const bool anyBound = std::any_of(state.m_buttonMapping.begin(), state.m_buttonMapping.end(),

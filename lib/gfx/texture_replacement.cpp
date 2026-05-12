@@ -98,7 +98,7 @@ bool is_relative_to(const std::filesystem::path& path, const std::filesystem::pa
   auto pathIt = path.begin();
   auto rootIt = root.begin();
   for (; rootIt != root.end(); ++rootIt, ++pathIt) {
-    if (pathIt == path.end() || !iequals_ascii(pathIt->string(), rootIt->string())) {
+    if (pathIt == path.end() || !iequals_ascii(fs_path_to_string(*pathIt), fs_path_to_string(*rootIt))) {
       return false;
     }
   }
@@ -401,7 +401,7 @@ std::optional<ConvertedTexture> load_replacement(const ReplacementIndexEntry& en
   std::vector<ConvertedTexture> more;
   std::error_code ec;
   for (uint32_t mipLevel = 1;; ++mipLevel) {
-    const auto mipPath = entry.path.parent_path() / fmt::format("{}_mip{}{}", entry.path.stem().string(), mipLevel, entry.path.extension().string());
+    const auto mipPath = entry.path.parent_path() / fmt::format("{}_mip{}{}", fs_path_to_string(entry.path.stem()), mipLevel, fs_path_to_string(entry.path.extension()));
     if (!std::filesystem::is_regular_file(mipPath, ec)) {
       break;
     }
@@ -411,14 +411,13 @@ std::optional<ConvertedTexture> load_replacement(const ReplacementIndexEntry& en
     const uint32_t eh = std::max(base->height >> mipLevel, 1u);
     const bool ok = lvl.has_value() && lvl->format == base->format && lvl->width == ew && lvl->height == eh;
     if (!ok) {
-      if (more.empty()) {
-        if (!lvl.has_value()) {
-          Log.warn("texture_replacement: could not load mip {}", fs_path_to_string(mipPath));
-        } else {
-          Log.warn("texture_replacement: expected {}x{} for mip {}, got {}x{}", fs_path_to_string(mipPath), ew, eh, lvl->width, lvl->height);
-        }
-        return std::nullopt;
+      if (!lvl.has_value()) {
+        Log.warn("texture_replacement: could not load mip {}", fs_path_to_string(mipPath));
+      } else {
+        Log.warn("texture_replacement: expected {}x{} for mip {}, got {}x{}", ew, eh, fs_path_to_string(mipPath),
+                 lvl->width, lvl->height);
       }
+
       break;
     }
     more.push_back(std::move(*lvl));
@@ -507,9 +506,11 @@ void build_index() noexcept {
   }
 
   std::error_code ec;
-  for (std::filesystem::recursive_directory_iterator it(s_replacementRoot,
-                                                        std::filesystem::directory_options::skip_permission_denied |
-                                                        std::filesystem::directory_options::follow_directory_symlink, ec);
+  for (std::filesystem::recursive_directory_iterator it(
+           s_replacementRoot,
+           std::filesystem::directory_options::skip_permission_denied |
+               std::filesystem::directory_options::follow_directory_symlink,
+           ec);
        it != std::filesystem::recursive_directory_iterator(); it.increment(ec)) {
     if (ec) {
       break;
@@ -525,21 +526,23 @@ void build_index() noexcept {
       continue;
     }
 
-    if (!iequals_ascii(path.extension().string(), ".dds") && !iequals_ascii(path.extension().string(), ".png")) {
+    if (!iequals_ascii(fs_path_to_string(path.extension()), ".dds") && !iequals_ascii(fs_path_to_string(path.extension()), ".png")) {
       continue;
     }
 
-    if (is_sidecar_mip(path.stem().string())) {
+    if (is_sidecar_mip(fs_path_to_string(path.stem()))) {
       continue;
     }
 
-    const auto parsed = parse_replacement_filename(path.filename().string());
+    const auto parsed = parse_replacement_filename(fs_path_to_string(path.filename()));
     if (!parsed.has_value()) {
       continue;
     }
 
     s_replacementIndex.try_emplace(*parsed, path);
   }
+
+  Log.info("Indexed {} texture replacements", s_replacementIndex.size());
 }
 
 const ReplacementIndexEntry* find_replacement_path(const RuntimeTextureKey& key) noexcept {
@@ -641,7 +644,9 @@ bool dump_editable_texture_dds(const RuntimeTextureKey& key, const GXTexObj_& ob
     if (tlut == nullptr) {
       return false;
     }
-    pixels = convert_texture_palette(obj.format(), texWidth, texHeight, 1, texData, static_cast<GXTlutFmt>(tlut->format), tlut->entries, {tlut->data.data(), tlut->data.size()});
+    pixels =
+        convert_texture_palette(obj.format(), texWidth, texHeight, 1, texData, static_cast<GXTlutFmt>(tlut->format),
+                                tlut->entries, {tlut->data.data(), tlut->data.size()});
   } else {
     pixels = convert_texture(obj.format(), texWidth, texHeight, 1, texData);
   }

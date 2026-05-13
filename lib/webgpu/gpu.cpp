@@ -112,6 +112,9 @@ TextureWithSampler create_render_texture(uint32_t width, uint32_t height, bool m
   if (multisampled) {
     sampleCount = g_graphicsConfig.msaaSamples;
   }
+  if (width == 0 || height == 0) {
+    Log.fatal("Invalid render texture size! {}x{}, multisampled {}, format {}", width, height, static_cast<uint32_t>(format), multisampled);
+  }
   const wgpu::TextureDescriptor textureDescriptor{
       .label = "Render texture",
       .usage = wgpu::TextureUsage::RenderAttachment | wgpu::TextureUsage::TextureBinding | wgpu::TextureUsage::CopySrc |

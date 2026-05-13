@@ -3,6 +3,12 @@ include(FetchContent)
 # Don't build tests for third party dependencies
 set(BUILD_TESTING OFF CACHE INTERNAL "Build tests")
 
+if (NOT DEFINED BUILD_SHARED_LIBS)
+  set(_USE_SHARED ON)
+else ()
+  set(_USE_SHARED OFF)
+endif ()
+
 function(aurora_find_package_global)
   set(_PREV_FIND_PACKAGE_TARGETS_GLOBAL ${CMAKE_FIND_PACKAGE_TARGETS_GLOBAL})
   set(CMAKE_FIND_PACKAGE_TARGETS_GLOBAL ON)
@@ -89,6 +95,9 @@ if (AURORA_ENABLE_GX)
   endif ()
   if (NOT TARGET ZLIB::ZLIB)
     message(STATUS "aurora: Fetching zlib")
+    set(ZLIB_BUILD_SHARED ${_USE_SHARED} CACHE BOOL "Enable building zlib shared library" FORCE)
+    set(ZLIB_BUILD_TESTING OFF CACHE BOOL "Enable Zlib Examples as tests" FORCE)
+    set(ZLIB_INSTALL OFF CACHE BOOL "Enable installation of zlib" FORCE)
     FetchContent_Declare(
       ZLIB
       URL https://github.com/madler/zlib/releases/download/v1.3.2/zlib-1.3.2.tar.gz
@@ -109,7 +118,7 @@ if (AURORA_ENABLE_GX)
   endif ()
 
   if (NOT TARGET PNG::PNG)
-    if (TARGET png_shared)
+    if (TARGET png_shared AND _USE_SHARED)
       add_library(PNG::PNG ALIAS png_shared)
     elseif (TARGET png_static)
       add_library(PNG::PNG ALIAS png_static)
@@ -119,6 +128,9 @@ if (AURORA_ENABLE_GX)
   endif ()
   if (NOT TARGET PNG::PNG)
     message(STATUS "aurora: Fetching libpng")
+    set(PNG_SHARED ${_USE_SHARED} CACHE BOOL "Build libpng as a shared library" FORCE)
+    set(PNG_TESTS OFF CACHE BOOL "Build the libpng tests" FORCE)
+    set(PNG_TOOLS OFF CACHE BOOL "Build the libpng tools" FORCE)
     FetchContent_Declare(
       PNG
       URL https://github.com/pnggroup/libpng/archive/refs/tags/v1.6.58.tar.gz
@@ -127,7 +139,7 @@ if (AURORA_ENABLE_GX)
       EXCLUDE_FROM_ALL
     )
     FetchContent_MakeAvailable(PNG)
-    if (TARGET png_shared)
+    if (TARGET png_shared AND _USE_SHARED)
       add_library(PNG::PNG ALIAS png_shared)
     elseif (TARGET png_static)
       add_library(PNG::PNG ALIAS png_static)

@@ -48,6 +48,7 @@ static wgpu::Adapter g_adapter;
 wgpu::Instance g_instance;
 static wgpu::AdapterInfo g_adapterInfo;
 static wgpu::SurfaceCapabilities g_surfaceCapabilities;
+bool g_bcTexturesSupported;
 
 namespace {
 
@@ -516,6 +517,7 @@ bool initialize(AuroraBackend auroraBackend) {
     for (size_t i = 0; i < supportedFeatures.featureCount; ++i) {
       const auto feature = supportedFeatures.features[i];
       if (feature == wgpu::FeatureName::TextureCompressionBC) {
+        g_bcTexturesSupported = true;
         requiredFeatures.push_back(feature);
       }
     }

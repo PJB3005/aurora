@@ -77,6 +77,53 @@ else ()
 endif ()
 
 if (AURORA_ENABLE_GX)
+  if (NOT TARGET ZLIB::ZLIB)
+    find_package(ZLIB QUIET)
+  endif ()
+  if (NOT TARGET ZLIB::ZLIB)
+    message(STATUS "aurora: Fetching zlib")
+    FetchContent_Declare(
+      ZLIB
+      URL https://github.com/madler/zlib/releases/download/v1.3.2/zlib-1.3.2.tar.gz
+      URL_HASH SHA256=A9D4DF463D36A6E5F9C29BD6F4967312D17E996C1854F3511F833924EB1993CF
+      DOWNLOAD_EXTRACT_TIMESTAMP TRUE
+      EXCLUDE_FROM_ALL
+    )
+    FetchContent_MakeAvailable(ZLIB)
+    if (NOT TARGET ZLIB::ZLIB)
+      message(FATAL_ERROR "Failed to make zlib available")
+    endif ()
+  endif ()
+
+  if (NOT TARGET PNG::PNG)
+    if (TARGET png_static)
+      add_library(PNG::PNG ALIAS png_static)
+    elseif (TARGET png_shared)
+      add_library(PNG::PNG ALIAS png_shared)
+    else ()
+    endif ()
+  endif ()
+  if (NOT TARGET PNG::PNG)
+    message(STATUS "aurora: Fetching libpng")
+    FetchContent_Declare(
+      PNG
+      URL https://github.com/pnggroup/libpng/archive/refs/tags/v1.6.58.tar.gz
+      URL_HASH SHA256=A9D4DF463D36A6E5F9C29BD6F4967312D17E996C1854F3511F833924EB1993CF
+      DOWNLOAD_EXTRACT_TIMESTAMP TRUE
+      EXCLUDE_FROM_ALL
+    )
+    FetchContent_MakeAvailable(PNG)
+    if (TARGET png_static)
+      add_library(PNG::PNG ALIAS png_static)
+    elseif (TARGET png_shared)
+      add_library(PNG::PNG ALIAS png_shared)
+    else ()
+      message(FATAL_ERROR "Failed to make libpng available")
+    endif ()
+  else ()
+    message(STATUS "aurora: Using existing libpng")
+  endif ()
+
   find_package(Freetype QUIET)
   if (NOT TARGET Freetype::Freetype)
     message(STATUS "aurora: Fetching Freetype")
@@ -175,30 +222,22 @@ if (AURORA_ENABLE_GX)
     endif ()
   endif ()
 
-  if(AURORA_ENABLE_RMLUI AND NOT TARGET RmlUi)
+  if (AURORA_ENABLE_RMLUI AND NOT TARGET RmlUi)
     message(STATUS "aurora: Fetching RmlUi")
     FetchContent_Declare(rmlui
-            URL https://github.com/mikke89/RmlUi/archive/f9b8c9e2935d5df2c7dff2c190d3968e99b0c3dc.tar.gz
-            URL_HASH SHA256=42b830abc2509a8c07cf02ba3313505de3a4642725654f489402022d8fefdd79
-            DOWNLOAD_EXTRACT_TIMESTAMP TRUE
-            EXCLUDE_FROM_ALL
+      URL https://github.com/mikke89/RmlUi/archive/f9b8c9e2935d5df2c7dff2c190d3968e99b0c3dc.tar.gz
+      URL_HASH SHA256=42b830abc2509a8c07cf02ba3313505de3a4642725654f489402022d8fefdd79
+      DOWNLOAD_EXTRACT_TIMESTAMP TRUE
+      EXCLUDE_FROM_ALL
     )
     FetchContent_MakeAvailable(rmlui)
 
-    add_library(rmlui_backends STATIC
-            ${rmlui_SOURCE_DIR}/Backends/RmlUi_Platform_SDL.cpp
-    )
+    add_library(rmlui_backends STATIC ${rmlui_SOURCE_DIR}/Backends/RmlUi_Platform_SDL.cpp)
     # TODO: maybe dont hardcode this to SDL3?
     target_compile_definitions(rmlui_backends PUBLIC RMLUI_SDL_VERSION_MAJOR=3)
-
-    target_include_directories(rmlui_backends PUBLIC
-            ${rmlui_SOURCE_DIR}/Backends
-    )
-
+    target_include_directories(rmlui_backends PUBLIC ${rmlui_SOURCE_DIR}/Backends)
     target_link_libraries(rmlui_backends PRIVATE rmlui ${AURORA_SDL3_TARGET})
-
   endif ()
-
 endif ()
 
 if (NOT TARGET TracyClient)
@@ -219,33 +258,4 @@ if (NOT TARGET TracyClient)
   if (NOT TARGET TracyClient)
     message(FATAL_ERROR "Failed to make TracyClient available")
   endif ()
-endif ()
-
-if (NOT TARGET PNG::PNG)
-  if (TARGET png_static)
-    add_library(PNG::PNG ALIAS png_static)
-  elseif (TARGET png_shared)
-    add_library(PNG::PNG ALIAS png_shared)
-  else ()
-  endif ()
-endif ()
-if (NOT TARGET PNG::PNG)
-  message(STATUS "aurora: Fetching libpng")
-  FetchContent_Declare(
-    PNG
-    URL https://github.com/pnggroup/libpng/archive/refs/tags/v1.6.58.tar.gz
-    URL_HASH SHA256=A9D4DF463D36A6E5F9C29BD6F4967312D17E996C1854F3511F833924EB1993CF
-    DOWNLOAD_EXTRACT_TIMESTAMP TRUE
-    EXCLUDE_FROM_ALL
-  )
-  FetchContent_MakeAvailable(PNG)
-  if (TARGET png_static)
-    add_library(PNG::PNG ALIAS png_static)
-  elseif (TARGET png_shared)
-    add_library(PNG::PNG ALIAS png_shared)
-  else ()
-    message(FATAL_ERROR "Failed to make libpng available")
-  endif ()
-else ()
-  message(STATUS "aurora: Using existing libpng")
 endif ()

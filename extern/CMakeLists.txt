@@ -212,6 +212,7 @@ if (NOT TARGET TracyClient)
           URL https://github.com/wolfpld/tracy/archive/a64b9a20294d59421a2f57aeca3c6383d8c48169.tar.gz
           URL_HASH SHA256=24d342b5127d7f659dc3cf94f24347b348cc736f25b17a691fd7f69541937658
           DOWNLOAD_EXTRACT_TIMESTAMP TRUE
+          EXCLUDE_FROM_ALL
   )
   FetchContent_MakeAvailable(tracy)
 
@@ -220,20 +221,31 @@ if (NOT TARGET TracyClient)
   endif ()
 endif ()
 
-find_package(png QUIET)
-
-if (NOT TARGET png_static)
-  message(STATUS "aurora: Fetching libpng")
-
-  FetchContent_Declare(
-          png
-          URL https://codeload.github.com/pnggroup/libpng/tar.gz/refs/tags/v1.6.58
-          URL_HASH SHA256=A9D4DF463D36A6E5F9C29BD6F4967312D17E996C1854F3511F833924EB1993CF
-          DOWNLOAD_EXTRACT_TIMESTAMP TRUE
-  )
-  FetchContent_MakeAvailable(png)
-
-  if (NOT TARGET png_static)
-    message(FATAL_ERROR "Failed to make png_static available")
+if (NOT TARGET PNG::PNG)
+  if (TARGET png_static)
+    add_library(PNG::PNG ALIAS png_static)
+  elseif (TARGET png_shared)
+    add_library(PNG::PNG ALIAS png_shared)
+  else ()
   endif ()
+endif ()
+if (NOT TARGET PNG::PNG)
+  message(STATUS "aurora: Fetching libpng")
+  FetchContent_Declare(
+    PNG
+    URL https://github.com/pnggroup/libpng/archive/refs/tags/v1.6.58.tar.gz
+    URL_HASH SHA256=A9D4DF463D36A6E5F9C29BD6F4967312D17E996C1854F3511F833924EB1993CF
+    DOWNLOAD_EXTRACT_TIMESTAMP TRUE
+    EXCLUDE_FROM_ALL
+  )
+  FetchContent_MakeAvailable(PNG)
+  if (TARGET png_static)
+    add_library(PNG::PNG ALIAS png_static)
+  elseif (TARGET png_shared)
+    add_library(PNG::PNG ALIAS png_shared)
+  else ()
+    message(FATAL_ERROR "Failed to make libpng available")
+  endif ()
+else ()
+  message(STATUS "aurora: Using existing libpng")
 endif ()

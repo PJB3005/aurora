@@ -94,16 +94,11 @@ if (AURORA_ENABLE_GX)
       message(FATAL_ERROR "Failed to make zlib available")
     endif ()
     # libpng calls find_package(ZLIB) even when zlib was already provided by FetchContent.
-    file(WRITE "${CMAKE_FIND_PACKAGE_REDIRECTS_DIR}/ZLIBConfig.cmake" [=[
-if (NOT TARGET ZLIB::ZLIB)
-  if (TARGET zlib)
-    add_library(ZLIB::ZLIB ALIAS zlib)
-  elseif (TARGET zlibstatic)
-    add_library(ZLIB::ZLIB ALIAS zlibstatic)
-  endif ()
-endif ()
-set(ZLIB_FOUND TRUE)
-]=])
+    file(WRITE "${CMAKE_FIND_PACKAGE_REDIRECTS_DIR}/ZLIBConfig.cmake"
+      "set(ZLIB_FOUND TRUE)\n"
+      "set(ZLIB_INCLUDE_DIR \"${zlib_SOURCE_DIR}\")\n"
+      "set(ZLIB_INCLUDE_DIRS \"${zlib_BINARY_DIR};${zlib_SOURCE_DIR}\")\n"
+    )
   endif ()
 
   if (NOT TARGET PNG::PNG)

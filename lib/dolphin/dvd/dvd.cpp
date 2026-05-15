@@ -85,6 +85,7 @@ BOOL s_autoFatalMessaging = FALSE;
 DVDDiskID s_diskID = {};
 DVDLowCallback s_resetCoverCallback = nullptr;
 bool s_initialized = false;
+bool s_overlayCallbacksSet = false;
 AuroraOverlayCallbacks s_overlayCallbacks;
 
 class CommandDataOverlay final : public CommandDataBase {
@@ -574,6 +575,10 @@ static bool validateOverlayFile(const AuroraOverlayFile& file) {
 }
 
 void aurora_dvd_overlay_files(const AuroraOverlayFile* files, size_t nFiles) {
+  if (!s_overlayCallbacksSet) {
+    Log.fatal("aurora_dvd_overlay_callbacks not called before aurora_dvd_overlay_files!");
+  }
+
   s_overlayFiles.clear();
 
   for (size_t i = 0; i < nFiles; i++) {
@@ -591,6 +596,7 @@ void aurora_dvd_overlay_files(const AuroraOverlayFile* files, size_t nFiles) {
 
 void aurora_dvd_overlay_callbacks(const AuroraOverlayCallbacks* callbacks) {
   s_overlayCallbacks = *callbacks;
+  s_overlayCallbacksSet = true;
 }
 
 void DVDInit(void) {}

@@ -1,5 +1,7 @@
 #include <aurora/dvd.h>
 #include <dolphin/dvd.h>
+
+#include <algorithm>
 #include <dolphin/os.h>
 #include <nod.h>
 #include <SDL3/SDL_iostream.h>
@@ -8,6 +10,7 @@
 #include <cstdint>
 #include <cstring>
 #include <limits>
+#include <memory>
 #include <string>
 #include <utility>
 #include <vector>
@@ -16,19 +19,63 @@
 
 namespace {
 
+aurora::Module Log("aurora::dvd");
+
 struct FSTEntry {
   std::string name;
   bool isDir = false;
   u32 parent = 0;
   u32 nextOrLength = 0;
+  void* overlayData = nullptr;
+  // Original entry num on the base game disc, BEFORE being re-organized by overlays.
+  u32 origEntryNum = 0;
+};
+
+struct IterateNode {
+  std::string name;
+  bool isDir;
+  u32 originalEntryNum;
+  u32 size;
+  void* overlayData;
+  std::vector<std::shared_ptr<IterateNode>> children;
+
+  IterateNode(std::string name, bool isDir, u32 size, void* overlayData)
+  : name(std::move(name)), isDir(isDir), size(size), originalEntryNum(0), overlayData(overlayData) {}
+
+  IterateNode(std::string name, bool isDir, u32 size, u32 originalEntryNum)
+  : name(std::move(name)), isDir(isDir), size(size), originalEntryNum(originalEntryNum), overlayData(nullptr) {}
 };
 
 struct IterateContext {
-  std::vector<FSTEntry>* entries = nullptr;
-  std::vector<std::pair<u32, u32>> dirStack;
+  std::shared_ptr<IterateNode> root;
+  std::vector<std::pair<std::shared_ptr<IterateNode>, u32>> dirStack;
 };
 
-NodHandle* s_disc = nullptr;
+class CommandDataBase {
+public:
+  virtual ~CommandDataBase() = default;
+  virtual int64_t read(uint8_t *buf, size_t len) = 0;
+  virtual int64_t seek(int64_t offset, int32_t whence) = 0;
+};
+
+class CommandDataNod final : public CommandDataBase {
+public:
+  NodHandle* handle;
+  explicit CommandDataNod(NodHandle* nod_handle) : handle(nod_handle) { }
+  ~CommandDataNod() override {
+    nod_free(handle);
+  }
+
+  int64_t read(uint8_t* buf, size_t len) override {
+    return nod_read(handle, buf, len);
+  }
+
+  int64_t seek(int64_t offset, int32_t whence) override {
+    return nod_seek(handle, offset, whence);
+  }
+};
+
+CommandDataNod* s_disc;
 NodHandle* s_partition = nullptr;
 std::vector<FSTEntry> s_fstEntries;
 s32 s_currentDir = 0;
@@ -38,6 +85,32 @@ BOOL s_autoFatalMessaging = FALSE;
 DVDDiskID s_diskID = {};
 DVDLowCallback s_resetCoverCallback = nullptr;
 bool s_initialized = false;
+AuroraOverlayCallbacks s_overlayCallbacks;
+
+class CommandDataOverlay final : public CommandDataBase {
+public:
+  void* handle;
+  explicit CommandDataOverlay(void* handle) : handle(handle) { }
+  ~CommandDataOverlay() override {
+    s_overlayCallbacks.close(handle);
+  }
+
+  int64_t read(uint8_t* buf, size_t len) override {
+    return s_overlayCallbacks.read(handle, buf, len);
+  }
+
+  int64_t seek(int64_t offset, int32_t whence) override {
+    return s_overlayCallbacks.seek(handle, offset, whence);
+  }
+};
+
+struct OverlayFileEntry {
+  std::string fileName;
+  void* userData;
+  u32 size;
+};
+
+std::vector<OverlayFileEntry> s_overlayFiles;
 
 void clearState() {
   if (s_partition != nullptr) {
@@ -45,7 +118,7 @@ void clearState() {
     s_partition = nullptr;
   }
   if (s_disc != nullptr) {
-    nod_free(s_disc);
+    delete s_disc;
     s_disc = nullptr;
   }
   s_fstEntries.clear();
@@ -105,60 +178,140 @@ void sdlStreamClose(void* userData) {
 u32 fstCallback(u32 index, NodNodeKind kind, const char* name, u32 size, void* userData) {
   auto* ctx = static_cast<IterateContext*>(userData);
 
-  while (!ctx->dirStack.empty() && index >= ctx->dirStack.back().second) {
+  while (index >= ctx->dirStack.back().second) {
     ctx->dirStack.pop_back();
   }
 
-  if (ctx->entries->size() <= index) {
-    ctx->entries->resize(index + 1);
-  }
+  const auto newEntry = std::make_shared<IterateNode>(
+    name,
+    (kind == NOD_NODE_KIND_DIRECTORY),
+    size,
+    index);
 
-  FSTEntry& entry = (*ctx->entries)[index];
-  entry.name = (name != nullptr) ? name : "";
-  entry.isDir = (kind == NOD_NODE_KIND_DIRECTORY);
-  entry.parent = ctx->dirStack.empty() ? 0 : ctx->dirStack.back().first;
-  entry.nextOrLength = size;
+  const auto& curDir = ctx->dirStack.back().first;
+  curDir->children.push_back(newEntry);
 
-  if (entry.isDir) {
-    ctx->dirStack.emplace_back(index, size);
+  if (newEntry->isDir) {
+    ctx->dirStack.emplace_back(newEntry, size);
   }
 
   return index + 1;
 }
 
+bool nameEqualsIgnoreCase(std::string_view lhs, std::string_view rhs);
+
+IterateNode* findNode(const IterateNode& node, const std::string_view name) {
+  for (const auto& child : node.children) {
+    if (nameEqualsIgnoreCase(child->name, name)) {
+      return child.get();
+    }
+  }
+
+  return nullptr;
+}
+
+void mergeOverlayFileIntoContext(const IterateContext& context, const OverlayFileEntry& overlayFile) {
+  IterateNode* node = context.root.get();
+  std::string_view filePath = overlayFile.fileName;
+
+  assert(filePath.starts_with('/'));
+  filePath = filePath.substr(1);
+  while (true) {
+    const auto nextDelim = filePath.find('/');
+    if (nextDelim == std::string_view::npos) {
+      break;
+    }
+
+    const auto segment = filePath.substr(0, nextDelim);
+    filePath = filePath.substr(nextDelim + 1);
+
+    const auto existingNode = findNode(*node, segment);
+    if (existingNode) {
+      if (!existingNode->isDir) {
+        Log.error("Overlay file {} needs directory that's already a file!", overlayFile.fileName);
+        return;
+      }
+
+      node = existingNode;
+    } else {
+      const auto newNode = std::make_shared<IterateNode>(std::string(segment), true, 0, nullptr);
+      node->children.push_back(newNode);
+      node = newNode.get();
+    }
+  }
+
+  // Remainder of fileName is the actual file name, and node is the directory we're in.
+
+  auto newNode = IterateNode(std::string(filePath), false, overlayFile.size, overlayFile.userData);
+  const auto existingNode = findNode(*node, filePath);
+  if (existingNode) {
+    if (existingNode->isDir) {
+      Log.error("Overlay file {} overlaps directory with same name!", overlayFile.fileName);
+      return;
+    }
+
+    // Replace existing disc entry.
+    *existingNode = std::move(newNode);
+  } else {
+    // Add new entry.
+    node->children.emplace_back(std::make_shared<IterateNode>(std::move(newNode)));
+  }
+}
+
+void mergeOverlayFilesIntoContext(const IterateContext& context) {
+  for (const auto& overlayFile : s_overlayFiles) {
+    mergeOverlayFileIntoContext(context, overlayFile);
+  }
+}
+
+void makeFstRecursive(IterateNode& node, u32 parent) {
+  if (!node.isDir) {
+    assert(node.children.empty());
+
+    s_fstEntries.emplace_back(node.name, false, parent, node.size, node.overlayData, node.originalEntryNum);
+    return;
+  }
+
+  std::ranges::sort(node.children, [](const auto& a, const auto& b) { return a->name < b->name; });
+
+  const auto ourIndex = s_fstEntries.size();
+  s_fstEntries.emplace_back(node.name, true, parent, 0, node.overlayData, node.originalEntryNum);
+
+  for (const auto& child : node.children) {
+    makeFstRecursive(*child, ourIndex);
+  }
+
+  s_fstEntries[ourIndex].nextOrLength = s_fstEntries.size();
+}
+
+void makeFstFromContext(const IterateContext& context) {
+  makeFstRecursive(*context.root, 0);
+}
+
 bool rebuildFST() {
+  using namespace std::string_literals;
+
   if (s_partition == nullptr) {
     return false;
   }
 
   s_fstEntries.clear();
-  IterateContext ctx{};
-  ctx.entries = &s_fstEntries;
+  IterateContext ctx;
+  ctx.root = std::make_shared<IterateNode>(""s, true, 0, static_cast<u32>(0));
+  ctx.dirStack.emplace_back(ctx.root, std::numeric_limits<u32>::max());
+
   nod_partition_iterate_fst(s_partition, fstCallback, &ctx);
+  mergeOverlayFilesIntoContext(ctx);
+  makeFstFromContext(ctx);
 
-  if (s_fstEntries.empty()) {
-    FSTEntry root;
-    root.name = "";
-    root.isDir = true;
-    root.parent = 0;
-    root.nextOrLength = 1;
-    s_fstEntries.push_back(std::move(root));
-  }
-
-  s_fstEntries[0].name.clear();
-  s_fstEntries[0].isDir = true;
-  s_fstEntries[0].parent = 0;
-  if (s_fstEntries[0].nextOrLength < 1 || s_fstEntries[0].nextOrLength > s_fstEntries.size()) {
-    s_fstEntries[0].nextOrLength = static_cast<u32>(s_fstEntries.size());
-  }
   return true;
 }
 
-bool nameEqualsIgnoreCase(const std::string& lhs, const char* rhs, size_t rhsLen) {
-  if (lhs.size() != rhsLen) {
+bool nameEqualsIgnoreCase(const std::string_view lhs, const std::string_view rhs) {
+  if (lhs.size() != rhs.size()) {
     return false;
   }
-  for (size_t i = 0; i < rhsLen; ++i) {
+  for (size_t i = 0; i < rhs.size(); ++i) {
     char lc = lhs[i];
     char rc = rhs[i];
     if (lc >= 'a' && lc <= 'z') {
@@ -172,6 +325,10 @@ bool nameEqualsIgnoreCase(const std::string& lhs, const char* rhs, size_t rhsLen
     }
   }
   return true;
+}
+
+bool nameEqualsIgnoreCase(const std::string& lhs, const char* rhs, size_t rhsLen) {
+  return nameEqualsIgnoreCase(lhs, std::string_view(rhs, rhsLen));
 }
 
 s32 findInDir(s32 dirEntry, const char* name, size_t nameLen) {
@@ -220,7 +377,7 @@ std::string buildDirPath(s32 entryNum) {
   return out;
 }
 
-s32 readFromHandle(NodHandle* handle, void* out, s32 length, s32 offset, u32* transferredOut) {
+s32 readFromHandle(CommandDataBase* handle, void* out, s32 length, s32 offset, u32* transferredOut) {
   if (transferredOut != nullptr) {
     *transferredOut = 0;
   }
@@ -230,7 +387,7 @@ s32 readFromHandle(NodHandle* handle, void* out, s32 length, s32 offset, u32* tr
   if (length == 0) {
     return 0;
   }
-  if (nod_seek(handle, offset, 0) < 0) {
+  if (handle->seek(offset, 0) < 0) {
     return DVD_RESULT_FATAL_ERROR;
   }
 
@@ -238,7 +395,7 @@ s32 readFromHandle(NodHandle* handle, void* out, s32 length, s32 offset, u32* tr
   s32 totalRead = 0;
   s32 remaining = length;
   while (remaining > 0) {
-    const int64_t read = nod_read(handle, writePtr + totalRead, static_cast<size_t>(remaining));
+    const int64_t read = handle->read(writePtr + totalRead, static_cast<size_t>(remaining));
     if (read < 0) {
       return DVD_RESULT_FATAL_ERROR;
     }
@@ -277,9 +434,9 @@ bool isCommandBlockIdle(const DVDCommandBlock* block) {
   return block != nullptr && block->state != DVD_STATE_BUSY && block->state != DVD_STATE_WAITING;
 }
 
-NodHandle* getCommandHandle(DVDCommandBlock* block) {
+CommandDataBase* getCommandHandle(DVDCommandBlock* block) {
   if (block != nullptr && block->userData != nullptr) {
-    return static_cast<NodHandle*>(block->userData);
+    return static_cast<CommandDataBase*>(block->userData);
   }
   return s_disc;
 }
@@ -360,20 +517,23 @@ bool aurora_dvd_open(const char* disc_path) {
       .preloader_threads = 1,
   };
 
-  NodResult result = nod_disc_open_stream(&stream, &options, &s_disc);
-  if (result != NOD_RESULT_OK || s_disc == nullptr) {
+  NodHandle* discHandle;
+  NodResult result = nod_disc_open_stream(&stream, &options, &discHandle);
+  if (result != NOD_RESULT_OK || discHandle == nullptr) {
     clearState();
     return false;
   }
 
-  result = nod_disc_open_partition_kind(s_disc, NOD_PARTITION_KIND_DATA, nullptr, &s_partition);
+  s_disc = new CommandDataNod(discHandle);
+
+  result = nod_disc_open_partition_kind(s_disc->handle, NOD_PARTITION_KIND_DATA, nullptr, &s_partition);
   if (result != NOD_RESULT_OK || s_partition == nullptr) {
     clearState();
     return false;
   }
 
   NodDiscHeader header{};
-  if (nod_disc_header(s_disc, &header) == NOD_RESULT_OK) {
+  if (nod_disc_header(s_disc->handle, &header) == NOD_RESULT_OK) {
     std::memcpy(s_diskID.gameName, header.game_id, sizeof(s_diskID.gameName));
     std::memcpy(s_diskID.company, header.game_id + sizeof(s_diskID.gameName), sizeof(s_diskID.company));
     s_diskID.diskNumber = header.disc_num;
@@ -396,6 +556,42 @@ bool aurora_dvd_open(const char* disc_path) {
 }
 
 void aurora_dvd_close(void) { clearState(); }
+
+static bool validateOverlayFile(const AuroraOverlayFile& file) {
+  const std::string_view name(file.fileName);
+
+  if (!name.starts_with('/')) {
+    Log.error("Overlay path {} does not start with /", name);
+    return false;
+  }
+
+  if (file.size > std::numeric_limits<u32>::max()) {
+    Log.error("Overlay file sizes above 4 GiB are not supported: {}", name);
+    return false;
+  }
+
+  return true;
+}
+
+void aurora_dvd_overlay_files(const AuroraOverlayFile* files, size_t nFiles) {
+  s_overlayFiles.clear();
+
+  for (size_t i = 0; i < nFiles; i++) {
+    const auto& file = files[i];
+
+    if (!validateOverlayFile(file)) {
+      continue;
+    }
+
+    s_overlayFiles.emplace_back(file.fileName, file.userData, static_cast<u32>(file.size));
+  }
+
+  rebuildFST();
+}
+
+void aurora_dvd_overlay_callbacks(const AuroraOverlayCallbacks* callbacks) {
+  s_overlayCallbacks = *callbacks;
+}
 
 void DVDInit(void) {}
 
@@ -443,8 +639,8 @@ int DVDSeekAbsAsyncPrio(DVDCommandBlock* block, s32 offset, DVDCBCallback callba
   ASSERTMSGLINE(0x7AC, !(offset & (4 - 1)), "DVDSeekAbs(): offset must be a multiple of 4.");
 
   beginCommand(block, DVD_COMMAND_SEEK, nullptr, 0, static_cast<u32>(offset), callback);
-  NodHandle* handle = getCommandHandle(block);
-  const int64_t seek = handle != nullptr ? nod_seek(handle, static_cast<int64_t>(offset), 0) : -1;
+  auto handle = getCommandHandle(block);
+  const int64_t seek = handle != nullptr ? handle->seek(static_cast<int64_t>(offset), 0) : -1;
   const s32 result = (seek < 0) ? DVD_RESULT_FATAL_ERROR : DVD_RESULT_GOOD;
   finishCommand(block, result, 0);
   if (callback != nullptr) {
@@ -736,21 +932,33 @@ BOOL DVDFastOpen(s32 entrynum, DVDFileInfo* fileInfo) {
   if (!s_initialized || fileInfo == nullptr || !isValidEntryIndex(entrynum) || s_partition == nullptr) {
     return FALSE;
   }
-  if (s_fstEntries[entrynum].isDir) {
+
+  const auto& entry = s_fstEntries[entrynum];
+  if (entry.isDir) {
     return FALSE;
   }
 
   std::memset(fileInfo, 0, sizeof(*fileInfo));
   fileInfo->startAddr = 0;
-  fileInfo->length = s_fstEntries[entrynum].nextOrLength;
+  fileInfo->length = entry.nextOrLength;
 
-  NodHandle* handle = nullptr;
-  NodResult result = nod_partition_open_file(s_partition, static_cast<u32>(entrynum), &handle);
-  if (result != NOD_RESULT_OK || handle == nullptr) {
-    return FALSE;
+  if (entry.overlayData) {
+    const auto handle = s_overlayCallbacks.open(entry.overlayData);
+    if (!handle) {
+      return FALSE;
+    }
+
+    fileInfo->cb.userData = new CommandDataOverlay(handle);
+  } else {
+    NodHandle* handle = nullptr;
+    NodResult result = nod_partition_open_file(s_partition, entry.origEntryNum, &handle);
+    if (result != NOD_RESULT_OK || handle == nullptr) {
+      return FALSE;
+    }
+
+    fileInfo->cb.userData = new CommandDataNod(handle);
   }
 
-  fileInfo->cb.userData = handle;
   fileInfo->cb.state = DVD_STATE_END;
   return TRUE;
 }
@@ -768,7 +976,7 @@ BOOL DVDClose(DVDFileInfo* fileInfo) {
     return FALSE;
   }
   if (fileInfo->cb.userData != nullptr) {
-    nod_free(static_cast<NodHandle*>(fileInfo->cb.userData));
+    delete static_cast<CommandDataBase*>(fileInfo->cb.userData);
     fileInfo->cb.userData = nullptr;
   }
   fileInfo->cb.state = DVD_STATE_END;
@@ -998,7 +1206,7 @@ BOOL DVDLowRead(void* addr, u32 length, u32 offset, DVDLowCallback callback) {
 }
 
 BOOL DVDLowSeek(u32 offset, DVDLowCallback callback) {
-  const int64_t seek = s_disc != nullptr ? nod_seek(s_disc, static_cast<int64_t>(offset), 0) : -1;
+  const int64_t seek = s_disc != nullptr ? s_disc->seek(static_cast<int64_t>(offset), 0) : -1;
   if (callback != nullptr) {
     callback(static_cast<u32>((seek >= 0) ? DVD_RESULT_GOOD : DVD_RESULT_FATAL_ERROR));
   }
